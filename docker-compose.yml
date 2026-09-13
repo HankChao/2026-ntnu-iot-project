@@ -1,0 +1,62 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: maps6-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: maps6-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-maps6}
+      POSTGRES_USER: ${POSTGRES_USER:-maps6}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-maps6_secret}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: maps6-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://maps6:maps6_secret@postgres:5432/maps6}
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL:-mqtt://mosquitto:1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-maps}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-iisnrl}
+      SESSION_SECRET: ${SESSION_SECRET:-maps6_super_secret_session_key}
+      PORT: 3000
+    depends_on:
+      - mosquitto
+      - postgres
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: maps6-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    depends_on:
+      - app
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  postgres_data:
