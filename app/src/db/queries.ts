@@ -341,6 +341,50 @@ export async function getDeviceDates(deviceId: string): Promise<string[]> {
   return rows.map((r: any) => r.date);
 }
 
+export interface DateSummary {
+  date: string;
+  count: number;
+  min_time: string;
+  max_time: string;
+}
+
+export async function getDeviceDateSummary(deviceId: string): Promise<DateSummary[]> {
+  if (!dbClient.isConnected()) {
+    const list = memorySensors.get(deviceId) || [];
+    const dateMap = new Map<string, { count: number; min_time: string; max_time: string }>();
+    for (const item of list) {
+      const d = item.timestamp.slice(0, 10);
+      const curr = dateMap.get(d) || { count: 0, min_time: item.timestamp, max_time: item.timestamp };
+      curr.count++;
+      if (item.timestamp < curr.min_time) curr.min_time = item.timestamp;
+      if (item.timestamp > curr.max_time) curr.max_time = item.timestamp;
+      dateMap.set(d, curr);
+    }
+    return Array.from(dateMap.entries())
+      .map(([date, val]) => ({ date, ...val }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  const sql = dbClient.sql;
+  const rows = await sql`
+    SELECT 
+      TO_CHAR(timestamp AT TIME ZONE 'Asia/Taipei', 'YYYY-MM-DD') AS date,
+      COUNT(*)::int AS count,
+      MIN(timestamp) AS min_time,
+      MAX(timestamp) AS max_time
+    FROM sensor_data
+    WHERE device_id = ${deviceId}
+    GROUP BY 1
+    ORDER BY date ASC;
+  `;
+  return rows.map((r: any) => ({
+    date: r.date,
+    count: r.count,
+    min_time: r.min_time,
+    max_time: r.max_time,
+  }));
+}
+
 export async function getSystemStats(): Promise<any> {
   if (!dbClient.isConnected()) {
     return {

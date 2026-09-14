@@ -1,15 +1,53 @@
-// ==============================================================================
-// Historical Backfill Routes
-// ==============================================================================
-
 import { Hono } from 'hono';
-import { batchInsertSensorData } from '../db/queries';
+import { batchInsertSensorData, getDeviceDateSummary } from '../db/queries';
 import type { SensorData } from '../types';
 
 export const backfillRoute = new Hono();
 
+// Middleware: Authenticate device via HTTP Basic Auth (maps:raspberry) or admin token
+async function deviceAuthMiddleware(c: any, next: any) {
+  const authHeader = c.req.header('Authorization');
+
+  // Allow admin session token
+  if (authHeader && (authHeader === 'Bearer maps6-session-token' || authHeader === 'maps6-session-token')) {
+    return await next();
+  }
+
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    return c.json({ success: false, error: 'Unauthorized: Basic auth required' }, 401);
+  }
+
+  const expectedUser = process.env.MQTT_USERNAME || 'maps';
+  const expectedPass = process.env.MQTT_PASSWORD || 'raspberry';
+
+  try {
+    const base64Credentials = authHeader.slice(6);
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+    const [username, password] = credentials.split(':');
+
+    if (username !== expectedUser || password !== expectedPass) {
+      return c.json({ success: false, error: 'Unauthorized: Invalid credentials' }, 401);
+    }
+  } catch {
+    return c.json({ success: false, error: 'Unauthorized: Malformed credentials' }, 401);
+  }
+
+  await next();
+}
+
+// GET /api/v1/devices/:id/date-summary (Query stored record counts and intervals per day)
+backfillRoute.get('/:id/date-summary', deviceAuthMiddleware, async (c) => {
+  const deviceId = c.req.param('id');
+  const summaries = await getDeviceDateSummary(deviceId);
+  return c.json({
+    success: true,
+    device_id: deviceId,
+    summaries,
+  });
+});
+
 // POST /api/v1/devices/:id/backfill (JSON batch)
-backfillRoute.post('/:id/backfill', async (c) => {
+backfillRoute.post('/:id/backfill', deviceAuthMiddleware, async (c) => {
   const deviceId = c.req.param('id');
   const body = await c.req.json().catch(() => null);
 
@@ -39,7 +77,7 @@ backfillRoute.post('/:id/backfill', async (c) => {
 });
 
 // POST /api/v1/devices/:id/backfill/csv (Multipart CSV upload)
-backfillRoute.post('/:id/backfill/csv', async (c) => {
+backfillRoute.post('/:id/backfill/csv', deviceAuthMiddleware, async (c) => {
   const deviceId = c.req.param('id');
   const body = await c.req.parseBody().catch(() => ({}));
   const file = body['file'];
