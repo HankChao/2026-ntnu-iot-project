@@ -19,6 +19,7 @@ import {
   websocket,
 } from './ws/handler';
 import { apiRouter } from './routes/api';
+import { ensureClothesSchema } from './clothes/store';
 
 const app = new Hono();
 
@@ -64,6 +65,8 @@ async function bootstrap() {
 
   // 1. Connect to Database (with graceful fallback)
   await dbClient.connect();
+  // Clothes raw must be persisted before the subscriber is started.
+  await ensureClothesSchema();
 
   // 2. Initialize WebSocket Realtime Telemetry Broadcaster
   initWebSocketBroadcaster();
@@ -81,6 +84,7 @@ async function bootstrap() {
 
 bootstrap().catch((err) => {
   console.error('Fatal error during startup:', err);
+  process.exit(1);
 });
 
 const port = Number(process.env.PORT) || 3000;

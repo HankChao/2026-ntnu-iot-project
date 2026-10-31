@@ -1,0 +1,16 @@
+name: checks
+on: [push, pull_request]
+jobs:
+  app-and-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: app
+      - run: bun test
+        working-directory: app
+      - run: bun install --frozen-lockfile
+        working-directory: web
+      - run: bun run build
+        working-directory: web
