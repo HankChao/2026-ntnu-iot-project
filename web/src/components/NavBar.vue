@@ -2,13 +2,14 @@
   <header class="header">
     <div class="brand">
       <router-link to="/" class="brand-link">
-        <span class="brand-title">MAPS 6.0</span>
-        <span class="brand-subtitle">中央監控管理</span>
+        <span class="brand-title">NTNU IoT</span>
+        <span class="brand-subtitle">智慧衣夾與環境觀測</span>
       </router-link>
     </div>
     <nav class="nav">
-      <router-link to="/" class="nav-item" active-class="active">即時儀表板</router-link>
-      <router-link to="/history" class="nav-item" active-class="active">歷史資料</router-link>
+      <router-link to="/" class="nav-item" active-class="active">智慧衣夾</router-link>
+      <router-link to="/air" class="nav-item" active-class="active">空氣盒子</router-link>
+      <router-link to="/history" class="nav-item" active-class="active">空氣歷史資料</router-link>
       <router-link to="/settings" class="nav-item" active-class="active">系統設定</router-link>
     </nav>
     <div class="user-action">
@@ -27,6 +28,8 @@ const { isAuthenticated, user, logout } = useAuth();
 
 <style scoped>
 .header {
+  flex-wrap: wrap;
+  gap: 12px;
   background-color: var(--color-canvas);
   border-bottom: 1px solid var(--color-hairline-strong);
   padding: 12px 24px;
@@ -55,6 +58,7 @@ const { isAuthenticated, user, logout } = useAuth();
 }
 
 .nav {
+  flex-wrap: wrap;
   display: flex;
   gap: 16px;
 }

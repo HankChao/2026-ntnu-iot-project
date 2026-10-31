@@ -4,3 +4,11 @@ dist/
 *.log
 .env
 !.env.example
+firmware/**/build/
+firmware/**/sdkconfig
+firmware/**/sdkconfig.old
+firmware/**/managed_components/
+firmware/**/app_config.h
+test-results/
+firmware-build.log
+mosquitto/passwd

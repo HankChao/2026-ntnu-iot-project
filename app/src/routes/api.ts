@@ -11,6 +11,7 @@ import { commandsRoute } from './commands';
 import { sensorsRoute } from './sensors';
 import { backfillRoute } from './backfill';
 import { authRoute } from './auth';
+import { clothesRoute } from './clothes';
 
 export const apiRouter = new Hono();
 
@@ -39,6 +40,7 @@ apiRouter.get('/system/stats', async (c) => {
 
 // Mount modular sub-routers
 apiRouter.route('/auth', authRoute);
+apiRouter.route('/clothes', clothesRoute);
 apiRouter.route('/devices', devicesRoute);
 apiRouter.route('/devices', commandsRoute);
 apiRouter.route('/devices', sensorsRoute);

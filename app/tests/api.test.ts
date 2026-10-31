@@ -77,7 +77,7 @@ describe('REST API Routes', () => {
   it('POST /api/v1/devices/:id/backfill batch ingestion', async () => {
     const res = await app.request('/api/v1/devices/TEST_DEV_01/backfill', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer maps6-session-token' },
       body: JSON.stringify({
         date: '2026-09-10',
         records: [

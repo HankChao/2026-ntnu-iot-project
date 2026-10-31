@@ -6,6 +6,9 @@ import mqtt, { type MqttClient } from 'mqtt';
 import { globalEventBus } from '../events/bus';
 import type { OnlinePayload, SensorPayload, StatusPayload } from '../types';
 import { insertSensorData, setDeviceOnline, upsertDeviceStatus } from '../db/queries';
+import { ingestClothesRaw } from '../clothes/ingest';
+
+const clothesTopic = process.env.CLOTHES_MQTT_TOPIC || 'clothes/raw';
 
 export class MQTTSubscriber {
   private client: MqttClient | null = null;
@@ -15,7 +18,7 @@ export class MQTTSubscriber {
     private brokerUrl: string = process.env.MQTT_BROKER_URL || 'mqtt://mosquitto:1883',
     private options: mqtt.IClientOptions = {
       username: process.env.MQTT_USERNAME || 'maps',
-      password: process.env.MQTT_PASSWORD || 'iisnrl',
+      password: process.env.MQTT_PASSWORD,
       clientId: `maps6-server-sub-${Math.random().toString(16).substring(2, 8)}`,
       clean: true,
       reconnectPeriod: 3000,
@@ -30,7 +33,7 @@ export class MQTTSubscriber {
         this.connected = true;
         console.log(`[MQTTSubscriber] Connected to broker: ${this.brokerUrl}`);
 
-        const topics = ['MAPS/+/sensor', 'MAPS/+/status', 'MAPS/+/online'];
+        const topics = ['MAPS/+/sensor', 'MAPS/+/status', 'MAPS/+/online', clothesTopic];
         this.client!.subscribe(topics, { qos: 1 }, (err) => {
           if (err) {
             console.error('[MQTTSubscriber] Subscription failed:', err);
@@ -40,7 +43,13 @@ export class MQTTSubscriber {
         });
       });
 
-      this.client.on('message', (topic, payload) => {
+      this.client.on('message', (topic, payload, packet) => {
+        if (topic === clothesTopic) {
+          const receivedAt = new Date();
+          ingestClothesRaw(payload.toString(), receivedAt, packet.retain)
+            .catch((error) => console.error('[Clothes] Record not stored:', error.message));
+          return;
+        }
         this.handleMessage(topic, payload.toString());
       });
 
