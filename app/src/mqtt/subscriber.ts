@@ -18,7 +18,7 @@ export class MQTTSubscriber {
     private brokerUrl: string = process.env.MQTT_BROKER_URL || 'mqtt://mosquitto:1883',
     private options: mqtt.IClientOptions = {
       username: process.env.MQTT_USERNAME || 'maps',
-      password: process.env.MQTT_PASSWORD || 'iisnrl',
+      password: process.env.MQTT_PASSWORD,
       clientId: `maps6-server-sub-${Math.random().toString(16).substring(2, 8)}`,
       clean: true,
       reconnectPeriod: 3000,

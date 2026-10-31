@@ -11,3 +11,4 @@ firmware/**/managed_components/
 firmware/**/app_config.h
 test-results/
 firmware-build.log
+mosquitto/passwd
