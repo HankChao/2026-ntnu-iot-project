@@ -7,7 +7,7 @@ $stage = if ($env:NTNU_IDF_BUILD_DIR) { $env:NTNU_IDF_BUILD_DIR } else { 'C:\esp
 $stage = [System.IO.Path]::GetFullPath($stage)
 $marker = Join-Path $stage '.source-path'
 if (Test-Path -LiteralPath $stage) {
-    if (!(Test-Path -LiteralPath $marker) -or (Get-Content $marker -Raw).Trim() -ne $sourceRoot) {
+    if (!(Test-Path -LiteralPath $marker) -or (Get-Content $marker -Raw -Encoding UTF8).Trim() -ne $sourceRoot) {
         throw "Build directory belongs to another project: $stage. Set NTNU_IDF_BUILD_DIR."
     }
 } else {
