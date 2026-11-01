@@ -27,6 +27,54 @@
       <span>每秒一筆 · 時間由 server 記錄 · 顯示時區：台北</span>
     </div>
 
+    <section class="dry-section" aria-labelledby="dry-title">
+      <div class="verdict" :class="verdict.tone" aria-live="polite">
+        <div class="verdict-text">
+          <p class="eyebrow">乾燥判斷 · 暫定</p>
+          <h2 id="dry-title">{{ verdict.title }}</h2>
+          <p class="verdict-tip">{{ verdict.tip }}</p>
+        </div>
+        <div class="meter">
+          <div class="track" role="progressbar" aria-label="乾燥進度" aria-valuemin="0" aria-valuemax="100" :aria-valuenow="verdict.progress ?? undefined">
+            <div class="fill" :style="{ width: (verdict.progress ?? 0) + '%' }"></div>
+          </div>
+          <div class="meter-row"><span>乾燥進度 <b>{{ verdict.progress == null ? '—' : Math.round(verdict.progress) + '%' }}</b></span><span>{{ verdict.eta }}</span></div>
+        </div>
+      </div>
+
+      <div class="dry-grid">
+        <article v-for="sensor in sensors" :key="sensor.key" class="dry-card" :style="{ '--sensor-color': sensor.color }">
+          <div class="reading-label"><span>{{ sensor.title }}</span><span class="hardware">{{ sensor.hardware }}</span></div>
+          <template v-if="stats[sensor.key].dryness != null">
+            <div class="dry-value">{{ Math.round(stats[sensor.key].dryness!) }}<small>% 乾燥</small></div>
+            <div class="track small"><div class="fill" :style="{ width: stats[sensor.key].dryness + '%' }"></div></div>
+          </template>
+          <template v-else>
+            <div class="dry-value muted">{{ formatChange(stats[sensor.key].change) }}<small>相對起始</small></div>
+            <div class="reading-note">尚未設定全乾／全濕基準，只顯示變化量</div>
+          </template>
+          <div class="dry-meta">
+            <span>變化速度 <b>{{ formatRate(stats[sensor.key]) }}</b></span>
+            <span class="chip" :class="{ steady: stats[sensor.key].trend === '趨於穩定' }">{{ stats[sensor.key].trend }}</span>
+          </div>
+        </article>
+      </div>
+
+      <details class="calib">
+        <summary>校正基準（暫定，存在這台瀏覽器）</summary>
+        <p class="calib-help">做實驗時，把乾燥的布料夾好、等讀值穩定後按「目前值→全乾」；布料完全濕的時候按「目前值→全濕」。三個感測器可以分開設定，沒設定的不會參與判斷。方向（變濕時讀值上升或下降）會自動由兩個基準推出來。</p>
+        <div class="calib-row" v-for="sensor in sensors" :key="sensor.key">
+          <strong :style="{ color: sensor.color }">{{ sensor.title }}</strong>
+          <label>全乾 <input type="number" step="any" :value="calib[sensor.key].dry ?? ''" @change="setRef(sensor.key, 'dry', ($event.target as HTMLInputElement).value)" /></label>
+          <button type="button" :disabled="stats[sensor.key].current == null" @click="setRef(sensor.key, 'dry', stats[sensor.key].current)">目前值→全乾</button>
+          <label>全濕 <input type="number" step="any" :value="calib[sensor.key].wet ?? ''" @change="setRef(sensor.key, 'wet', ($event.target as HTMLInputElement).value)" /></label>
+          <button type="button" :disabled="stats[sensor.key].current == null" @click="setRef(sensor.key, 'wet', stats[sensor.key].current)">目前值→全濕</button>
+          <span class="calib-now">目前 {{ formatRaw(stats[sensor.key].current == null ? null : Math.round(stats[sensor.key].current!)) }}</span>
+        </div>
+        <button type="button" class="calib-clear" @click="clearCalib">清除全部基準</button>
+      </details>
+    </section>
+
     <section class="history-section">
       <div class="history-heading">
         <div><h2>原始值歷史曲線</h2><p>各感測器使用獨立刻度；缺值或資料中斷顯示為斷線。</p></div>
@@ -50,7 +98,7 @@
       </article>
       <div class="history-footer">已載入 {{ records.length.toLocaleString() }} 筆 · 歷史曲線每 5 秒更新</div>
     </section>
-    <footer class="page-note">目前顯示感測器原始數值。重量、電壓、含水率與乾燥預測將在後續校正與實驗階段加入。</footer>
+    <footer class="page-note">原始數值為感測器直接讀值；乾燥判斷為暫定演算法，需先在上方設定全乾／全濕基準，門檻與公式待實驗資料確認後調整。</footer>
   </div>
 </template>
 
@@ -83,6 +131,115 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 let historyUpdated = 0;
 const controllers = new Set<AbortController>();
+
+// ===== 乾燥判斷（暫定）：參數待實驗資料確認 =====
+const CONFIG = {
+  SPEED_WINDOW_MIN: 15,   // 計算變化速度用最近幾分鐘的資料
+  MIN_SAMPLES: 30,        // 至少幾筆才計算速度
+  MIN_SPAN_MIN: 2,        // 資料至少涵蓋幾分鐘才計算速度
+  DONE_WEIGHT: 95,        // 重量法乾燥程度達此 % 視為整件乾了
+  DONE_SURFACE: 90,       // 電阻、電容達此 % 視為夾子附近乾了
+  STEADY_RATE: 1,         // 變化速度低於此值（%/小時）視為趨於穩定
+  MIN_RATE: 0.5,          // 預估剩餘時間所需的最小速度（%/小時）
+  SMOOTH_N: 5,            // 取最近／最早幾筆的中位數當作目前值／起始值
+};
+type Ref = { dry: number | null; wet: number | null };
+type Calib = Record<Field, Ref>;
+const CALIB_KEY = 'clothes-calib-v1';
+const emptyCalib = (): Calib => ({
+  hx711_raw: { dry: null, wet: null }, ads1115_raw: { dry: null, wet: null }, touch_raw: { dry: null, wet: null },
+});
+function loadCalib(): Calib {
+  const base = emptyCalib();
+  try {
+    const saved = JSON.parse(localStorage.getItem(CALIB_KEY) || 'null');
+    if (saved) for (const k of Object.keys(base) as Field[]) {
+      for (const w of ['dry', 'wet'] as const) {
+        const v = saved?.[k]?.[w];
+        base[k][w] = typeof v === 'number' && Number.isFinite(v) ? v : null;
+      }
+    }
+  } catch { /* 無法讀取就用空基準 */ }
+  return base;
+}
+const calib = ref<Calib>(loadCalib());
+watch(calib, (value) => { try { localStorage.setItem(CALIB_KEY, JSON.stringify(value)); } catch { /* 無法儲存就只留在記憶體 */ } }, { deep: true });
+function setRef(key: Field, which: 'dry' | 'wet', value: unknown) {
+  const n = value === '' || value == null ? null : Number(value);
+  calib.value[key][which] = n != null && Number.isFinite(n) ? n : null;
+}
+function clearCalib() { calib.value = emptyCalib(); }
+
+type Stat = {
+  current: number | null; change: number | null; dryness: number | null;
+  rate: number | null; rawRate: number | null; trend: string;
+};
+const median = (xs: number[]) => {
+  const a = [...xs].sort((x, y) => x - y), m = a.length >> 1;
+  return a.length ? (a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2) : null;
+};
+function computeStat(key: Field): Stat {
+  const pts: { t: number; v: number }[] = [];
+  for (const r of records.value) { const v = r[key]; if (v != null) pts.push({ t: new Date(r.timestamp).getTime(), v }); }
+  const out: Stat = { current: null, change: null, dryness: null, rate: null, rawRate: null, trend: '資料累積中' };
+  if (!pts.length) return out;
+  const current = median(pts.slice(-CONFIG.SMOOTH_N).map((p) => p.v))!;
+  const start = median(pts.slice(0, CONFIG.SMOOTH_N).map((p) => p.v))!;
+  out.current = current;
+  out.change = start !== 0 ? (current - start) / Math.abs(start) * 100 : null;
+
+  const { dry, wet } = calib.value[key];
+  const span = dry != null && wet != null && dry !== wet ? dry - wet : null;   // 方向由兩個基準自動決定
+  if (span != null) out.dryness = Math.max(0, Math.min(100, (current - wet!) / span * 100));
+
+  const last = pts[pts.length - 1].t;
+  const win = pts.filter((p) => last - p.t <= CONFIG.SPEED_WINDOW_MIN * 60000);
+  if (win.length < CONFIG.MIN_SAMPLES || (last - win[0].t) / 60000 < CONFIG.MIN_SPAN_MIN) return out;
+  const n = win.length, mt = win.reduce((a, p) => a + p.t, 0) / n, mv = win.reduce((a, p) => a + p.v, 0) / n;
+  let num = 0, den = 0;
+  for (const p of win) { num += (p.t - mt) * (p.v - mv); den += (p.t - mt) ** 2; }
+  if (den === 0) return out;
+  const slope = num / den;                       // 每毫秒變化的計數
+  out.rawRate = slope * 60000;                   // 計數／分鐘
+  if (span != null) {
+    out.rate = slope * 3600000 / span * 100;     // 乾燥進度 %／小時（正值 = 越來越乾）
+    out.trend = Math.abs(out.rate) < CONFIG.STEADY_RATE ? '趨於穩定' : out.rate > 0 ? '持續變乾' : '正在變濕';
+  } else {
+    out.trend = '尚未校正';
+  }
+  return out;
+}
+const stats = computed<Record<Field, Stat>>(() => ({
+  hx711_raw: computeStat('hx711_raw'), ads1115_raw: computeStat('ads1115_raw'), touch_raw: computeStat('touch_raw'),
+}));
+const formatChange = (v: number | null) => v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+const formatRate = (s: Stat) => s.rate != null ? s.rate.toFixed(1) + ' %/小時' : s.rawRate != null ? s.rawRate.toFixed(2) + ' 計數/分' : '—';
+function formatDuration(hours: number) {
+  const min = Math.round(hours * 60), h = Math.floor(min / 60), m = min % 60;
+  return h ? `${h} 小時 ${m} 分` : `${m} 分`;
+}
+const verdict = computed(() => {
+  const w = stats.value.hx711_raw.dryness;
+  const surface = [stats.value.ads1115_raw.dryness, stats.value.touch_raw.dryness].filter((v): v is number => v != null);
+  if (!records.value.length) return { tone: 'idle', title: '等待資料', tip: '衣夾送出資料後，這裡會顯示乾燥判斷。', progress: null as number | null, eta: '預估 —' };
+  if (w == null && !surface.length) return { tone: 'idle', title: '尚未設定校正基準',
+    tip: '先在下方「校正基準」記錄全乾與全濕的讀值，才能算出乾燥程度。目前只顯示各感測器的變化。', progress: null as number | null, eta: '預估 —' };
+  const surfaceAvg = surface.length ? surface.reduce((a, b) => a + b, 0) / surface.length : null;
+  const progress = (w ?? surfaceAvg)!;
+  const surfaceDry = surface.every((v) => v >= CONFIG.DONE_SURFACE);
+  const done = (w == null || w >= CONFIG.DONE_WEIGHT) && surfaceDry;
+  const title = done ? '可以收衣服了' : progress >= 70 ? '快乾了' : progress >= 30 ? '慢慢變乾中' : '還很濕';
+  let tip = '依目前已校正的感測器綜合判斷。';
+  if (w != null && w >= CONFIG.DONE_WEIGHT && !surfaceDry) tip = '整件衣服的水差不多蒸發完了，但夾子附近還有點濕，厚的地方可能還沒乾。';
+  else if (w != null && w < 70 && surface.length && surfaceDry) tip = '夾子附近可能乾了，但衣服裡面還有不少水。';
+  else if (w == null) tip = '尚未設定重量法基準，只用電阻、電容判斷夾子附近，無法確認整件衣服。';
+  else if (!surface.length) tip = '尚未設定電阻、電容基準，只用重量判斷整件衣服，無法確認夾子附近。';
+  if (done) tip = w == null ? '電阻、電容都確認乾了。' : '重量和布料濕度都確認乾了。';
+  if (stale.value || !mqttConnected.value) tip = '資料中斷，以下為最後收到的資料。' + tip;
+  const ref = w != null ? stats.value.hx711_raw : stats.value.ads1115_raw.dryness != null ? stats.value.ads1115_raw : stats.value.touch_raw;
+  const eta = done ? '已經乾了' : ref.rate != null && ref.rate > CONFIG.MIN_RATE ? '預估再 ' + formatDuration((100 - progress) / ref.rate) : '預估 —';
+  return { tone: done ? 'done' : 'active', title, tip, progress, eta };
+});
 
 const connectionClass = computed(() => error.value || ingestionError.value ? 'failed' : !latest.value || stale.value || !mqttConnected.value ? 'waiting' : 'live');
 const connectionText = computed(() => {
@@ -198,5 +355,26 @@ h3 { font-size: 14px; display: flex; gap: 8px; align-items: center; }h3 i { widt
 .history-footer, .page-note { color: #7b887e; font-size: 12px; }.page-note { margin-top: 26px; border-top: 1px solid #e0e6df; padding-top: 18px; }
 .empty-state { border: 1px dashed #cbd8cf; border-radius: 12px; padding: 70px 20px; text-align: center; background: #f7faf6; }.empty-state p { font-size: 13px; color: #7b887e; margin-top: 10px; }
 .notice { padding: 12px 16px; background: #faf2df; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }.notice.error { background: #fff0ed; color: #9b4641; }
-@media (max-width: 800px) { .intro { align-items: flex-start; flex-direction: column; gap: 14px; }.reading-grid { grid-template-columns: 1fr; }.value { font-size: 32px; }.history-heading { align-items: flex-start; flex-direction: column; }.clothes-page { padding: 24px 16px; }h1 span { display: block; margin: 4px 0 0; }.chart-title span { font-size: 10px; } }
+.dry-section { margin-bottom: 34px; }
+.verdict { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px 32px; padding: 24px 26px; border-radius: 16px; background: #eef3ee; border: 1px solid #dfe7e0; margin-bottom: 18px; }
+.verdict.active { background: #f7efdc; border-color: #eadbb8; }.verdict.done { background: #e3f2e8; border-color: #bfdcc9; }
+.verdict h2 { font-size: 28px; margin: 4px 0 8px; letter-spacing: -.02em; }.verdict-tip { font-size: 14px; color: #55685f; }
+.meter { align-self: center; display: flex; flex-direction: column; gap: 10px; }
+.track { height: 14px; border-radius: 999px; background: rgba(255,255,255,.8); overflow: hidden; border: 1px solid #dfe7e0; }.track.small { height: 8px; margin-top: 4px; }
+.fill { height: 100%; background: var(--sensor-color, #238575); border-radius: 999px; transition: width .6s ease; }
+.meter-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: #55685f; font-variant-numeric: tabular-nums; }.meter-row b { font-size: 17px; color: #233d35; }
+.dry-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.dry-card { background: white; border: 1px solid #dfe7e0; border-radius: 14px; padding: 18px 22px; border-top: 3px solid var(--sensor-color); }
+.dry-value { font-size: 32px; font-weight: 700; color: var(--sensor-color); margin: 14px 0 6px; font-variant-numeric: tabular-nums; }.dry-value.muted { color: #5b6e65; }
+.dry-value small { font-size: 12px; font-weight: 400; color: #7a877f; margin-left: 8px; }
+.dry-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; font-size: 12px; color: #6b7a72; }.dry-meta b { color: #233d35; font-weight: 600; }
+.chip { padding: 3px 10px; border-radius: 999px; background: #f2f5f1; color: #6b7a72; }.chip.steady { background: #dcebd6; color: #3e6a3c; }
+.calib { margin-top: 18px; background: #fff; border: 1px solid #dfe7e0; border-radius: 12px; padding: 14px 18px; font-size: 13px; }
+.calib summary { cursor: pointer; font-weight: 600; }.calib-help { color: #738078; margin: 10px 0 14px; line-height: 1.6; }
+.calib-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 0; border-top: 1px solid #eef1ed; }.calib-row strong { min-width: 70px; }
+.calib-row input { width: 110px; border: 1px solid #d6e0d8; border-radius: 6px; padding: 5px 8px; font: inherit; }
+.calib button { border: 1px solid #cfdad2; background: #f7faf6; border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; color: #345142; }
+.calib button:disabled { opacity: .45; cursor: not-allowed; }.calib-now { color: #839087; font-variant-numeric: tabular-nums; }
+.calib-clear { margin-top: 12px; }
+@media (max-width: 800px) { .verdict, .dry-grid { grid-template-columns: 1fr; }.intro { align-items: flex-start; flex-direction: column; gap: 14px; }.reading-grid { grid-template-columns: 1fr; }.value { font-size: 32px; }.history-heading { align-items: flex-start; flex-direction: column; }.clothes-page { padding: 24px 16px; }h1 span { display: block; margin: 4px 0 0; }.chart-title span { font-size: 10px; } }
 </style>
