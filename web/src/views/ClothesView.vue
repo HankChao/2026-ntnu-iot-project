@@ -61,7 +61,7 @@
       </div>
 
       <details class="calib">
-        <summary>校正基準（暫定，存在這台瀏覽器）</summary>
+        <summary>校正基準（暫定，存在這台瀏覽器）<span v-if="usingDefaultCalib" class="calib-default">目前是模擬資料預設值</span></summary>
         <p class="calib-help">做實驗時，把乾燥的布料夾好、等讀值穩定後按「目前值→全乾」；布料完全濕的時候按「目前值→全濕」。三個感測器可以分開設定，沒設定的不會參與判斷。方向（變濕時讀值上升或下降）會自動由兩個基準推出來。</p>
         <div class="calib-row" v-for="sensor in sensors" :key="sensor.key">
           <strong :style="{ color: sensor.color }">{{ sensor.title }}</strong>
@@ -72,6 +72,7 @@
           <span class="calib-now">目前 {{ formatRaw(stats[sensor.key].current == null ? null : Math.round(stats[sensor.key].current!)) }}</span>
         </div>
         <button type="button" class="calib-clear" @click="clearCalib">清除全部基準</button>
+        <button type="button" class="calib-clear" @click="resetCalib">還原模擬預設</button>
       </details>
     </section>
 
@@ -146,6 +147,14 @@ const CONFIG = {
 type Ref = { dry: number | null; wet: number | null };
 type Calib = Record<Field, Ref>;
 const CALIB_KEY = 'clothes-calib-v1';
+// 預設基準：目前是「模擬資料」的範圍，只用來確認畫面運作。
+// TODO 實驗後請改成真實布料的全乾／全濕讀值（或直接在頁面的校正基準面板設定，瀏覽器會優先使用面板存的值）。
+const DEFAULT_CALIB: Calib = {
+  hx711_raw: { dry: 85600, wet: 86400 },
+  ads1115_raw: { dry: 6800, wet: 8800 },
+  touch_raw: { dry: 31200, wet: 32400 },
+};
+const cloneCalib = (c: Calib): Calib => JSON.parse(JSON.stringify(c));
 const emptyCalib = (): Calib => ({
   hx711_raw: { dry: null, wet: null }, ads1115_raw: { dry: null, wet: null }, touch_raw: { dry: null, wet: null },
 });
@@ -153,7 +162,8 @@ function loadCalib(): Calib {
   const base = emptyCalib();
   try {
     const saved = JSON.parse(localStorage.getItem(CALIB_KEY) || 'null');
-    if (saved) for (const k of Object.keys(base) as Field[]) {
+    if (!saved) return cloneCalib(DEFAULT_CALIB);   // 這台瀏覽器還沒存過 → 用預設
+    for (const k of Object.keys(base) as Field[]) {
       for (const w of ['dry', 'wet'] as const) {
         const v = saved?.[k]?.[w];
         base[k][w] = typeof v === 'number' && Number.isFinite(v) ? v : null;
@@ -169,6 +179,8 @@ function setRef(key: Field, which: 'dry' | 'wet', value: unknown) {
   calib.value[key][which] = n != null && Number.isFinite(n) ? n : null;
 }
 function clearCalib() { calib.value = emptyCalib(); }
+function resetCalib() { calib.value = cloneCalib(DEFAULT_CALIB); }
+const usingDefaultCalib = computed(() => JSON.stringify(calib.value) === JSON.stringify(DEFAULT_CALIB));
 
 type Stat = {
   current: number | null; change: number | null; dryness: number | null;
@@ -375,6 +387,7 @@ h3 { font-size: 14px; display: flex; gap: 8px; align-items: center; }h3 i { widt
 .calib-row input { width: 110px; border: 1px solid #d6e0d8; border-radius: 6px; padding: 5px 8px; font: inherit; }
 .calib button { border: 1px solid #cfdad2; background: #f7faf6; border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; color: #345142; }
 .calib button:disabled { opacity: .45; cursor: not-allowed; }.calib-now { color: #839087; font-variant-numeric: tabular-nums; }
-.calib-clear { margin-top: 12px; }
+.calib-clear { margin-top: 12px; margin-right: 8px; }
+.calib-default { margin-left: 10px; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: #faf1de; color: #866324; }
 @media (max-width: 800px) { .verdict, .dry-grid { grid-template-columns: 1fr; }.intro { align-items: flex-start; flex-direction: column; gap: 14px; }.reading-grid { grid-template-columns: 1fr; }.value { font-size: 32px; }.history-heading { align-items: flex-start; flex-direction: column; }.clothes-page { padding: 24px 16px; }h1 span { display: block; margin: 4px 0 0; }.chart-title span { font-size: 10px; } }
 </style>
