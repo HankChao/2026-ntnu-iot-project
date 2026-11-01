@@ -16,12 +16,21 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
+#include "esp_crt_bundle.h"
 #include "mqtt_client.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "app_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
+#ifndef APP_MQTT_TLS
+#define APP_MQTT_TLS 0
+#endif
+#ifndef APP_SNTP_SERVER
+#define APP_SNTP_SERVER "pool.ntp.org"
+#endif
 
 #define DT GPIO_NUM_4
 #define SCK GPIO_NUM_5
@@ -195,6 +204,22 @@ static void publish_task(void *arg)
     }
 }
 
+static void mqtt_start_task(void *arg)
+{
+    xEventGroupWaitBits(connection, WIFI_UP, pdFALSE, pdTRUE, portMAX_DELAY);
+#if APP_MQTT_TLS
+    // Certificate validity requires a real clock, even though telemetry has no timestamp.
+    esp_sntp_config_t time_config = ESP_NETIF_SNTP_DEFAULT_CONFIG(APP_SNTP_SERVER);
+    ESP_ERROR_CHECK(esp_netif_sntp_init(&time_config));
+    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(30000)) != ESP_OK) {
+        output("NET waiting for network time; TLS verification remains enabled\r\n");
+    }
+    output("NET time synchronized; starting verified MQTT TLS\r\n");
+#endif
+    ESP_ERROR_CHECK(esp_mqtt_client_start(mqtt));
+    vTaskDelete(NULL);
+}
+
 static void network_init(void)
 {
     if (!strlen(APP_WIFI_SSID) || !strlen(APP_MQTT_HOST)) {
@@ -221,11 +246,14 @@ static void network_init(void)
     const esp_mqtt_client_config_t config = {
         .broker.address.hostname = APP_MQTT_HOST,
         .broker.address.port = APP_MQTT_PORT,
-        .broker.address.transport = MQTT_TRANSPORT_OVER_TCP,
+        .broker.address.transport = APP_MQTT_TLS ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP,
+#if APP_MQTT_TLS
+        .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
+#endif
         .credentials.username = strlen(APP_MQTT_USERNAME) ? APP_MQTT_USERNAME : NULL,
         .credentials.authentication.password = strlen(APP_MQTT_USERNAME) ? APP_MQTT_PASSWORD : NULL,
         .session.keepalive = 30,
-        .network.timeout_ms = 1000,
+        .network.timeout_ms = 10000,
         .network.reconnect_timeout_ms = 3000,
     };
     mqtt = esp_mqtt_client_init(&config);
@@ -233,8 +261,9 @@ static void network_init(void)
     ESP_ERROR_CHECK(esp_mqtt_client_register_event(mqtt, ESP_EVENT_ANY_ID, mqtt_event, NULL));
     BaseType_t created = xTaskCreate(publish_task, "raw_publish", 4096, NULL, 4, NULL);
     ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+    created = xTaskCreate(mqtt_start_task, "mqtt_start", 4096, NULL, 4, NULL);
+    ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_mqtt_client_start(mqtt));
 }
 
 void app_main(void)

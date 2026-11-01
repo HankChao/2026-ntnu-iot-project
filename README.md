@@ -31,6 +31,8 @@ docker compose up -d --build
 將 `main/app_config.example.h` 複製成 `main/app_config.h`，集中填入 Wi-Fi 名稱、密碼、MQTT IP、port、帳密。實際設定檔已加入 gitignore。
 完整接線、編譯與燒錄步驟見 [韌體操作說明](firmware/esp32-s3/README.md)。
 
+遠端 broker 可啟用 `APP_MQTT_TLS 1`、設定 port 8883，韌體會校時並驗證伺服器憑證。改送遠端後，請使用對應的遠端網站觀察資料；本機儀表板不會自動同步遠端資料。設定方式見韌體操作說明的「遠端 MQTT TLS」。
+
 ## MQTT 約定
 
 Topic：`clothes/raw`。每秒一筆，QoS 0、retain=false，斷線不補傳歷史資料。
