@@ -26,11 +26,14 @@
       <span>最後接收時間：<strong>{{ latest ? formatTime(latest.timestamp) : '尚未收到資料' }}</strong></span>
       <span>每秒一筆 · 時間由 server 記錄 · 顯示時區：台北</span>
     </div>
-    <div class="outdoor" v-if="outdoor">
-      <span>戶外（氣象署{{ outdoor.station }}站）</span>
-      <strong>{{ outdoor.temp ?? '—' }}°C</strong>
-      <strong>{{ outdoor.hum == null ? '—' : Math.round(outdoor.hum) }}%RH</strong>
-      <small>{{ outdoor.observed_at.slice(11, 16) }} 觀測</small>
+    <div class="outdoor" v-if="counties.length">
+      <span>戶外（氣象署）</span>
+      <select v-model="county" aria-label="縣市">
+        <option v-for="c in counties" :key="c" :value="c">{{ c }}</option>
+      </select>
+      <strong>{{ outdoor?.temp ?? '—' }}°C</strong>
+      <strong>{{ outdoor?.hum == null ? '—' : Math.round(outdoor.hum) }}%RH</strong>
+      <small v-if="outdoor">{{ outdoor.stations }} 站中位數 · {{ outdoor.observed_at.slice(11, 16) }} 觀測</small>
     </div>
 
     <section class="dry-section" aria-labelledby="dry-title">
@@ -134,14 +137,37 @@ const loaded = ref(false);
 const historyLoading = ref(true);
 const truncated = ref(false);
 const minutes = ref(15);
-const outdoor = ref<{ station: string; observed_at: string; temp: number | null; hum: number | null } | null>(null);
+const outdoor = ref<{ county: string; observed_at: string; temp: number | null; hum: number | null; stations: number } | null>(null);
+const counties = ref<string[]>([]);
+const county = ref('');
 let outdoorTimer: ReturnType<typeof setInterval>;
+
 async function loadOutdoor() {
+  if (!county.value) return;
   try {
-    const data = await request('/api/v1/weather/outdoor');
+    const data = await request('/api/v1/weather/outdoor?county=' + encodeURIComponent(county.value));
     if (!stopped) outdoor.value = data.data;
   } catch { /* 戶外資料失敗不影響主畫面 */ }
 }
+
+async function loadCounties() {
+  if (stopped) return;
+  try {
+    const data = await request('/api/v1/weather/counties');
+    if (stopped) return;
+    counties.value = data.data;
+    let saved: string | null = null;
+    try { saved = localStorage.getItem('outdoorCounty'); } catch { /* ignore */ }
+    const savedOk = saved && counties.value.includes(saved) ? saved : null;
+    county.value = savedOk ?? data.default ?? counties.value[0] ?? '';
+  } catch { setTimeout(loadCounties, 5000); } // 第一次抓全臺測站較慢，5 秒後重試
+}
+
+watch(county, (c) => {
+  if (!c) return;
+  try { localStorage.setItem('outdoorCounty', c); } catch { /* ignore */ }
+  loadOutdoor();
+});
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 let historyUpdated = 0;
@@ -347,11 +373,12 @@ async function poll() {
   if (!stopped) timer = setTimeout(poll, 1000);
 }
 watch(minutes, () => { historyUpdated = 0; historyLoading.value = true; });
-onMounted(() => { poll(); loadOutdoor(); outdoorTimer = setInterval(loadOutdoor, 10 * 60 * 1000); });
-onUnmounted(() => { stopped = true; clearTimeout(timer); controllers.forEach((controller) => controller.abort()); });
+onMounted(() => { poll(); loadCounties(); outdoorTimer = setInterval(loadOutdoor, 10 * 60 * 1000); });
+onUnmounted(() => { stopped = true; clearTimeout(timer); clearInterval(outdoorTimer); controllers.forEach((controller) => controller.abort()); });
 </script>
 
 <style scoped>
+.outdoor select { padding: 4px 8px; font-size: 13px; }
 .outdoor { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 13px; color: #65786f; padding: 0 0 22px; }
 .outdoor strong { color: #233d35; font-size: 15px; font-variant-numeric: tabular-nums; }
 .outdoor small { color: #7b887e; }
