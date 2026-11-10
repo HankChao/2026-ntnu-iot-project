@@ -26,6 +26,12 @@
       <span>最後接收時間：<strong>{{ latest ? formatTime(latest.timestamp) : '尚未收到資料' }}</strong></span>
       <span>每秒一筆 · 時間由 server 記錄 · 顯示時區：台北</span>
     </div>
+    <div class="outdoor" v-if="outdoor">
+      <span>戶外（氣象署{{ outdoor.station }}站）</span>
+      <strong>{{ outdoor.temp ?? '—' }}°C</strong>
+      <strong>{{ outdoor.hum == null ? '—' : Math.round(outdoor.hum) }}%RH</strong>
+      <small>{{ outdoor.observed_at.slice(11, 16) }} 觀測</small>
+    </div>
 
     <section class="dry-section" aria-labelledby="dry-title">
       <div class="verdict" :class="verdict.tone" aria-live="polite">
@@ -128,6 +134,14 @@ const loaded = ref(false);
 const historyLoading = ref(true);
 const truncated = ref(false);
 const minutes = ref(15);
+const outdoor = ref<{ station: string; observed_at: string; temp: number | null; hum: number | null } | null>(null);
+let outdoorTimer: ReturnType<typeof setInterval>;
+async function loadOutdoor() {
+  try {
+    const data = await request('/api/v1/weather/outdoor');
+    if (!stopped) outdoor.value = data.data;
+  } catch { /* 戶外資料失敗不影響主畫面 */ }
+}
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 let historyUpdated = 0;
@@ -333,11 +347,14 @@ async function poll() {
   if (!stopped) timer = setTimeout(poll, 1000);
 }
 watch(minutes, () => { historyUpdated = 0; historyLoading.value = true; });
-onMounted(poll);
+onMounted(() => { poll(); loadOutdoor(); outdoorTimer = setInterval(loadOutdoor, 10 * 60 * 1000); });
 onUnmounted(() => { stopped = true; clearTimeout(timer); controllers.forEach((controller) => controller.abort()); });
 </script>
 
 <style scoped>
+.outdoor { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; font-size: 13px; color: #65786f; padding: 0 0 22px; }
+.outdoor strong { color: #233d35; font-size: 15px; font-variant-numeric: tabular-nums; }
+.outdoor small { color: #7b887e; }
 .clothes-page { max-width: 1200px; margin: auto; padding: 38px 28px; color: #233d35; }
 .intro { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 30px; }
 .eyebrow { font-size: 12px; letter-spacing: .12em; color: #688276; margin-bottom: 8px; }

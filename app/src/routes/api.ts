@@ -12,6 +12,7 @@ import { sensorsRoute } from './sensors';
 import { backfillRoute } from './backfill';
 import { authRoute } from './auth';
 import { clothesRoute } from './clothes';
+import { weatherRoute } from './weather';
 
 export const apiRouter = new Hono();
 
@@ -45,3 +46,4 @@ apiRouter.route('/devices', devicesRoute);
 apiRouter.route('/devices', commandsRoute);
 apiRouter.route('/devices', sensorsRoute);
 apiRouter.route('/devices', backfillRoute);
+apiRouter.route('/weather', weatherRoute);

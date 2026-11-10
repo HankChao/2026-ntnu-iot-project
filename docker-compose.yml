@@ -47,6 +47,8 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
       CLOTHES_MQTT_TOPIC: ${CLOTHES_MQTT_TOPIC:-clothes/raw}
       SESSION_SECRET: ${SESSION_SECRET:-maps6_super_secret_session_key}
+      CWA_API_KEY: ${CWA_API_KEY:-}
+      CWA_STATION: ${CWA_STATION:-臺北}
       PORT: 3000
     depends_on:
       mosquitto:
