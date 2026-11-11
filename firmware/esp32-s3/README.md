@@ -89,7 +89,7 @@ USB log 每秒顯示 HX711、ADS1115、touch raw 值。Wi-Fi/MQTT 連線成功�
 
 ### 配網實機測試（Windows）
 
-使用含 pyserial 的 Python（例如 ESP-IDF Python）執行 `tools/smoke_setup_windows.py`。需插上 USB 並讓 Windows 先連上一個已保存的 Wi-Fi profile；工具暫時切換到板子的設定熱點，結束時自動切回原 profile。
+使用含 pyserial 的 Python（例如 ESP-IDF Python）執行 `tools/smoke_setup_windows.py`。需插上 USB 並讓 Windows 先連上一個已保存的 Wi-Fi profile；工具暫時切換到板子的設定熱點，結束時自動切回原 profile。請從 PowerShell 或 cmd 執行；工具解析英文的 `netsh` 輸出，Git Bash 下 `netsh` 會輸出中文而無法解析。板子連上其他頻道的 AP 時設定熱點會跟著換頻道，手機或電腦會短暫斷線，工具會自動重連。
 
 - `--mode inspect`：設定頁、掃描、密碼遮蔽、無效 token／參數拒收。
 - `--mode cancel`、`--mode fail`：取消與錯誤 SSID 回復。

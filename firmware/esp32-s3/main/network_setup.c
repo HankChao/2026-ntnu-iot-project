@@ -62,7 +62,7 @@ static QueueHandle_t commands;
 static esp_mqtt_client_handle_t client;
 static esp_netif_t *sta_netif;
 static httpd_handle_t server;
-static bool ap_open, testing, allow_publish, reconnect_wifi, sntp_started, portal_paused_sta;
+static bool ap_open, testing, allow_publish, reconnect_wifi, portal_paused_sta;
 static int last_reason;
 static char phase[24] = "connecting", message[192] = "正在連線";
 static char ap_ssid[33], ap_password[17], csrf[33];
@@ -152,11 +152,14 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         ip_event_got_ip_t *event = data;
         xEventGroupClearBits(events, WIFI_DOWN);
         xEventGroupSetBits(events, WIFI_UP);
-        printf("NET Wi-Fi IP: " IPSTR "\n", IP2STR(&event->ip_info.ip));
-        if (!sntp_started) {
-            sntp_started = true;
-            esp_netif_sntp_start();
-        }
+        wifi_ap_record_t ap_info;
+        if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK)
+            printf("NET Wi-Fi IP: " IPSTR " (channel %u, RSSI %d dBm)\n", IP2STR(&event->ip_info.ip),
+                ap_info.primary, ap_info.rssi);
+        else printf("NET Wi-Fi IP: " IPSTR "\n", IP2STR(&event->ip_info.ip));
+        // Restart SNTP on every new IP until synced: a request sent on a previous network
+        // (or lost on a weak link) must not leave the clock waiting for lwIP's backoff.
+        if (!(xEventGroupGetBits(events) & CLOCK_OK)) esp_netif_sntp_start();
     }
 }
 
@@ -238,6 +241,19 @@ void network_publish(const char *json, int64_t sampled_us)
     xSemaphoreGive(mqtt_lock);
 }
 
+static void apply_sta_config(const settings_t *cfg)
+{
+    wifi_config_t wifi = {0};
+    memcpy(wifi.sta.ssid, cfg->ssid, strlen(cfg->ssid));
+    memcpy(wifi.sta.password, cfg->wifi_password, strlen(cfg->wifi_password));
+    // Campus/dorm SSIDs have many BSSIDs. Fast scan joins the first one found (lowest
+    // channel), which may be a distant AP; scan all channels and pick the strongest.
+    wifi.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wifi.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    wifi.sta.failure_retry_cnt = 2;
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
+}
+
 static void switch_wifi(const settings_t *cfg, bool connect)
 {
     reconnect_wifi = false;
@@ -245,10 +261,7 @@ static void switch_wifi(const settings_t *cfg, bool connect)
     if (esp_wifi_disconnect() == ESP_OK) {
         xEventGroupWaitBits(events, WIFI_DOWN, pdFALSE, pdTRUE, pdMS_TO_TICKS(1500));
     }
-    wifi_config_t wifi = {0};
-    memcpy(wifi.sta.ssid, cfg->ssid, strlen(cfg->ssid));
-    memcpy(wifi.sta.password, cfg->wifi_password, strlen(cfg->wifi_password));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
+    apply_sta_config(cfg);
     last_reason = 0;
     reconnect_wifi = cfg->ssid[0] != 0 && connect;
     if (reconnect_wifi) esp_wifi_connect();
@@ -636,15 +649,17 @@ void network_setup_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT,ESP_EVENT_ANY_ID,wifi_event,NULL));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT,IP_EVENT_STA_GOT_IP,wifi_event,NULL));
+#if CONFIG_LWIP_SNTP_MAX_SERVERS >= 3
+    esp_sntp_config_t sync=ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
+        ESP_SNTP_SERVER_LIST(APP_SNTP_SERVER,"time.google.com","time.cloudflare.com"));
+#else
     esp_sntp_config_t sync=ESP_NETIF_SNTP_DEFAULT_CONFIG(APP_SNTP_SERVER);
+#endif
     sync.start=false; sync.sync_cb=time_synced;
     ESP_ERROR_CHECK(esp_netif_sntp_init(&sync));
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    wifi_config_t wifi={0};
-    memcpy(wifi.sta.ssid,active.ssid,strlen(active.ssid));
-    memcpy(wifi.sta.password,active.wifi_password,strlen(active.wifi_password));
     reconnect_wifi=active.ssid[0]!=0;
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA,&wifi));
+    apply_sta_config(&active);
     ESP_ERROR_CHECK(esp_wifi_start());
     assert(xTaskCreate(network_worker,"network_setup",8192,NULL,4,NULL)==pdPASS);
     assert(xTaskCreate(button_worker,"setup_button",3072,NULL,3,NULL)==pdPASS);

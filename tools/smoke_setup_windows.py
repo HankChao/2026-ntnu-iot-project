@@ -19,6 +19,7 @@ import serial
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 BASE = 'http://192.168.4.1'
 TOKEN = ''
+AP_SSID = ''
 
 
 def run(*args):
@@ -44,22 +45,39 @@ def expect_error(path, body, code, token=None):
     raise AssertionError(f'Expected HTTP {code}: {path}')
 
 
+def rejoin_ap():
+    # The setup AP follows the STA channel (single radio), so Windows drops off the AP
+    # when the board joins a network on another channel. Rejoin like a phone would.
+    current = run('netsh', 'wlan', 'show', 'interfaces')
+    if not re.search(r'^\s*SSID\s*:\s*' + re.escape(AP_SSID) + r'\s*$', current, re.M):
+        print('Rejoining setup AP:', run('netsh', 'wlan', 'connect', 'name=' + AP_SSID).strip(), flush=True)
+
+
 def wait_status(expected, seconds):
     end = time.monotonic() + seconds
     latest = None
+    last_rejoin = time.monotonic()
     while time.monotonic() < end:
         try:
-            latest = api('/api/status')[1]
+            status = api('/api/status')[1]
+            if status != latest:
+                print('STATUS', status['phase'], status['message'], 'ip=' + status['ip'], flush=True)
+            latest = status
             if latest['phase'] in expected:
                 return latest
-        except (urllib.error.URLError, TimeoutError):
-            pass
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if AP_SSID and time.monotonic() - last_rejoin > 5:
+                try:
+                    rejoin_ap()
+                except subprocess.SubprocessError:
+                    pass
+                last_rejoin = time.monotonic()
         time.sleep(.5)
     raise AssertionError('Timed out; last status: ' + str(latest))
 
 
 def main():
-    global TOKEN
+    global TOKEN, AP_SSID
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', default='COM7')
     parser.add_argument('--mode', choices=['inspect', 'cancel', 'fail', 'mqtt-fail', 'success', 'persist'], default='inspect')
@@ -84,6 +102,7 @@ def main():
             break
     if not info:
         raise AssertionError('No setup AP credentials received from USB.')
+    AP_SSID = info['ssid']
     print('Setup AP:', info['ssid'], '(password not printed)', flush=True)
     stopped = threading.Event()
     def drain_console():
@@ -166,7 +185,8 @@ def main():
         elif opts.mode == 'success':
             trial.update(ssid=opts.ssid, open=True, keep_wifi_password=False)
             assert api('/api/connect', trial)[0] == 202
-            result = wait_status({'success', 'failed'}, 45)
+            # Firmware worst case: Wi-Fi 20 s + SNTP 30 s + MQTT 20 s.
+            result = wait_status({'success', 'failed'}, 90)
             assert result['phase'] == 'success', result
             assert result['wifi_connected'] and result['mqtt_connected']
             assert api('/api/config')[1]['ssid'] == opts.ssid
