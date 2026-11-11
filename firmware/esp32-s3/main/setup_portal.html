@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>智慧衣夾 · 網路設定</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f1f5f2;color:#203e34;font:16px system-ui,"Microsoft JhengHei",sans-serif;line-height:1.6}main{max-width:640px;margin:auto;padding:30px 20px 45px}header{margin-bottom:25px}.eyebrow{font-size:12px;letter-spacing:.15em;color:#657d70}h1{font-size:28px;line-height:1.3;margin:10px 0}header p{color:#667b70;font-size:14px;margin:9px 0}.card{border:1px solid #dce5dd;background:white;padding:24px;border-radius:16px;margin-bottom:16px}h2{font-size:19px;margin:0 0 18px}.number{display:inline-grid;place-items:center;background:#e8f3eb;color:#267454;border-radius:50%;width:28px;height:28px;margin-right:9px;font-size:14px}label.field{display:block;font-size:14px;font-weight:600;margin:17px 0 6px}input:not([type=checkbox]),select{width:100%;border:1px solid #becfc4;border-radius:8px;padding:11px 12px;font:inherit;color:#203e34;background:white}input:focus,select:focus{outline:3px solid #b9dbca;outline-offset:1px}input:disabled{background:#f0f3f1;color:#88958c}.hint{font-size:12px;color:#708177;margin:6px 0 0}.check{display:flex;gap:9px;align-items:flex-start;font-size:14px;margin:13px 0}.check input{margin-top:6px;accent-color:#237755}.row{display:flex;gap:10px;align-items:center}.row select{min-width:0;flex:1}button{border:0;border-radius:8px;padding:11px 16px;font:600 14px system-ui;cursor:pointer;background:#e8f0e9;color:#315e49;white-space:nowrap}button:disabled{opacity:.5;cursor:wait}.primary{background:#237755;color:white;font-size:16px;width:100%;padding:14px}.secondary{background:white;border:1px solid #c9d6cc}.actions{display:flex;gap:10px;margin-top:12px}.actions button{flex:1}summary{font-weight:600;cursor:pointer}details .hint{margin-top:12px}.status{border-left:4px solid #a6b9ad;background:#f7f9f6;padding:14px 16px;border-radius:6px;margin-top:18px;font-size:14px;overflow-wrap:anywhere}.status.good{border-color:#237755;background:#edf7ef}.status.bad{border-color:#b55143;background:#fff1ed}.status.busy{border-color:#b68a37;background:#fff9e9}#connection{font-size:12px;color:#6d8074;margin-top:7px}.footer{font-size:12px;color:#6d8074;text-align:center;margin-top:22px}small.badge{background:#f0f4f0;padding:3px 7px;border-radius:5px;color:#698072;font-size:11px;margin-left:6px}@media(max-width:380px){main{padding:22px 12px}.card{padding:18px}.row{align-items:stretch;flex-direction:column}}
+</style>
+<main>
+ <header><div class="eyebrow">NTNU · SMART CLOTHES CLIP</div><h1>為衣夾連上網路</h1><p>設定會保存在板子裡，斷電後也會記住。下次換場地，長按 GPIO0 按鈕 3 秒即可重新設定。</p></header>
+ <form id="settings">
+  <section class="card"><h2><span class="number">1</span>選擇 Wi-Fi</h2>
+   <div class="row"><select id="networks" aria-label="附近的 Wi-Fi"><option value="">掃描附近的 2.4 GHz Wi-Fi</option></select><button type="button" id="scan">重新掃描</button></div>
+   <p class="hint" id="scanHint">也可以直接在下方輸入網路名稱。</p>
+   <label class="field" for="ssid">Wi-Fi 名稱</label><input id="ssid" name="ssid" maxlength="32" required autocomplete="off" placeholder="輸入 Wi-Fi 名稱">
+   <label class="check"><input type="checkbox" id="open">這是沒有密碼的開放網路</label>
+   <label class="field" for="wifiPassword">Wi-Fi 密碼</label><input id="wifiPassword" type="password" maxlength="64" autocomplete="new-password" placeholder="輸入新網路的密碼">
+   <label class="check" id="keepWifiLabel"><input type="checkbox" id="keepWifi">沿用已儲存的 Wi-Fi 密碼（同一網路）</label>
+   <label class="check"><input type="checkbox" id="showPasswords">顯示本次輸入的密碼</label>
+   <p class="hint">支援 2.4 GHz 網路；需要網頁登入的校園／公共 Wi-Fi，可能無法連到 MQTT。</p>
+  </section>
+  <section class="card"><details><summary>MQTT 進階設定 <small class="badge">換 Wi-Fi 通常不用改</small></summary>
+   <p class="hint">沿用目前伺服器即可。密碼不會從板子回傳到網頁。</p>
+   <label class="field" for="host">Broker 網域或 IPv4</label><input id="host" required maxlength="128" autocomplete="off" placeholder="例如 iot.example.com">
+   <label class="field" for="port">Port</label><input id="port" type="number" min="1" max="65535" required inputmode="numeric" value="8883">
+   <label class="check"><input type="checkbox" id="tls" checked>啟用 TLS 並驗證伺服器憑證</label>
+   <label class="field" for="username">MQTT 帳號</label><input id="username" maxlength="64" autocomplete="off">
+   <label class="field" for="mqttPassword">MQTT 密碼</label><input id="mqttPassword" type="password" maxlength="128" autocomplete="new-password" placeholder="需要更換時才輸入">
+   <label class="check"><input type="checkbox" id="keepMqtt" checked>沿用已儲存的 MQTT 密碼</label>
+   <label class="field" for="topic">發送 Topic</label><input id="topic" required maxlength="128" value="clothes/raw" autocomplete="off">
+  </details></section>
+  <section class="card"><h2><span class="number">2</span>測試並儲存</h2>
+   <p class="hint" style="margin-bottom:16px">Wi-Fi、校時與 MQTT 都成功後才保存。測試期間暫停上傳；失敗會保留舊設定。</p>
+   <button class="primary" id="save" disabled>儲存並連線</button>
+   <div class="actions"><button type="button" id="cancel" class="secondary" hidden>取消測試</button><button type="button" id="close" class="secondary">關閉設定熱點</button></div>
+   <div id="status" class="status" role="status" aria-live="polite">正在讀取板子設定…</div><div id="connection"></div>
+  </section>
+ </form>
+ <div class="footer">設定網址：192.168.4.1<br>配網期間若手機提示「沒有網際網路」，請選擇保持連線。</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let config=null,token='',busy=false,completed=false,timer;
+function status(message,kind=''){ $('status').textContent=message;$('status').className='status '+kind; }
+async function api(path,body,timeout=6000){
+ const controller=new AbortController(),limit=setTimeout(()=>controller.abort(),timeout);
+ try{
+  const options={signal:controller.signal,cache:'no-store'};
+  if(body!==undefined){options.method='POST';options.headers={'Content-Type':'application/json','X-Setup-Token':token};options.body=JSON.stringify(body);}
+  const response=await fetch(path,options);
+  if(!response.ok)throw new Error(response.status===400?'設定格式不正確，請確認 Wi-Fi 密碼、port 與 topic。':response.status===409?'板子正在連線，請稍後再試。':'設定請求失敗，請重新連上設定熱點並整理頁面。');
+  return await response.json();
+ }finally{clearTimeout(limit);}
+}
+function passwordState(){
+ const same=config && $('ssid').value===config.ssid;
+ $('keepWifi').disabled=busy||!same||!config?.wifi_password_saved||$('open').checked;
+ if(!same||!config?.wifi_password_saved||$('open').checked)$('keepWifi').checked=false;
+ $('wifiPassword').disabled=busy||$('open').checked||$('keepWifi').checked;
+ $('mqttPassword').disabled=busy||$('keepMqtt').checked;
+}
+function busyState(value){
+ busy=value;
+ for(const id of ['ssid','networks','scan','open','host','port','tls','username','topic','keepMqtt'])$(id).disabled=value;
+ $('save').disabled=value||!config;$('cancel').hidden=!value;$('close').disabled=value;
+ $('save').textContent=value?'正在測試連線…':'儲存並連線';passwordState();
+}
+async function scan(){
+ $('scan').disabled=true;$('scanHint').textContent='正在掃描，可能需要幾秒鐘…';
+ try{
+  const data=await api('/api/scan',undefined,15000);
+  $('networks').replaceChildren(new Option('選擇網路，或在下方手動輸入',''));
+  const unique=new Map();for(const network of data.networks)if(!unique.has(network.ssid))unique.set(network.ssid,network);
+  for(const network of unique.values()){
+   const option=new Option(network.ssid+' · '+(network.open?'無密碼':'需密碼')+' · '+network.rssi+' dBm',network.ssid);
+   option.dataset.open=String(network.open);$('networks').append(option);
+  }
+  $('scanHint').textContent=unique.size?'找到 '+unique.size+' 個網路；隱藏網路可手動輸入名稱。':'暫時沒有找到網路，可以手動輸入或重新掃描。';
+ }catch(error){$('scanHint').textContent=error.name==='AbortError'?'掃描逾時，請重試或手動輸入。':error.message;}
+ finally{$('scan').disabled=busy;}
+}
+async function poll(){
+ try{
+  const data=await api('/api/status');
+  if(data.testing)busyState(true);else if(busy)busyState(false);
+  $('connection').textContent='Wi-Fi：'+(data.wifi_connected?'已連線':'未連線')+'　MQTT：'+(data.mqtt_connected?'已連線':'未連線')+(data.ip?'　IP：'+data.ip:'');
+  if(data.phase==='success'){
+   completed=true;status(data.message,'good');$('save').disabled=true;$('close').disabled=true;return;
+  }
+  status(data.message,data.testing?'busy':data.phase==='failed'?'bad':'');
+ }catch(error){
+  if(!completed)status('暫時無法連到板子。測試時 Wi-Fi 可能換頻，請保持連上 Clothes-Setup 熱點。','busy');
+ }
+ timer=setTimeout(poll,1200);
+}
+$('networks').addEventListener('change',()=>{
+ if(!$('networks').value)return;
+ $('ssid').value=$('networks').value;$('wifiPassword').value='';
+ $('open').checked=$('networks').selectedOptions[0].dataset.open==='true';
+ $('keepWifi').checked=!!config?.wifi_password_saved&&$('ssid').value===config.ssid;passwordState();
+});
+$('ssid').addEventListener('input',()=>{$('open').checked=false;passwordState();});
+for(const id of ['open','keepWifi','keepMqtt'])$(id).addEventListener('change',passwordState);
+$('showPasswords').addEventListener('change',()=>{for(const id of ['wifiPassword','mqttPassword'])$(id).type=$('showPasswords').checked?'text':'password';});
+$('tls').addEventListener('change',()=>{if($('tls').checked&&$('port').value==='1883')$('port').value=8883;else if(!$('tls').checked&&$('port').value==='8883')$('port').value=1883;});
+$('scan').addEventListener('click',scan);
+$('settings').addEventListener('submit',async event=>{
+ event.preventDefault();if(busy||!config)return;
+ const wifiPassword=$('wifiPassword').value;
+ if(!$('open').checked&&!$('keepWifi').checked&&(wifiPassword.length<8||wifiPassword.length>64)){
+  status('請輸入至少 8 個字元的 Wi-Fi 密碼；無密碼網路請勾選上方選項。','bad');return;
+ }
+ const body={ssid:$('ssid').value,wifi_password:wifiPassword,open:$('open').checked,keep_wifi_password:$('keepWifi').checked,
+  host:$('host').value.trim(),port:Number($('port').value),tls:$('tls').checked,username:$('username').value,
+  topic:$('topic').value,mqtt_password:$('mqttPassword').value,keep_mqtt_password:$('keepMqtt').checked};
+ busyState(true);status('已送出設定，正在測試連線…','busy');
+ try{await api('/api/connect',body);$('wifiPassword').value='';$('mqttPassword').value='';}
+ catch(error){busyState(false);status(error.name==='AbortError'?'送出逾時，請等待狀態更新，避免重複送出。':error.message,'bad');}
+});
+$('cancel').addEventListener('click',async()=>{try{await api('/api/cancel',{});status('正在取消，等待板子恢復舊設定…','busy');}catch(error){status(error.message,'bad');}});
+$('close').addEventListener('click',async()=>{try{await api('/api/close',{});completed=true;clearTimeout(timer);busyState(true);$('cancel').hidden=true;status('設定熱點即將關閉，板子會繼續使用已保存的設定。','good');}catch(error){status(error.message,'bad');}});
+(async()=>{
+ try{
+  config=await api('/api/config');token=config.token;
+  for(const key of ['ssid','host','port','username','topic'])$(key).value=config[key];
+  $('tls').checked=config.tls;$('keepWifi').checked=config.wifi_password_saved;
+  $('open').checked=!!config.ssid&&!config.wifi_password_saved;
+  $('keepMqtt').checked=config.mqtt_password_saved;busyState(false);
+  poll();scan();
+ }catch(error){status('無法讀取設定。請連上 Clothes-Setup 熱點，再開啟 192.168.4.1。','bad');}
+})();
+</script>
+</html>
