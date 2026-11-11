@@ -31,15 +31,22 @@
       <div class="history-heading">
         <div><h2>原始值歷史曲線</h2><p>各感測器使用獨立刻度；缺值或資料中斷顯示為斷線。</p></div>
         <label>時間範圍
-          <select v-model.number="minutes" aria-label="歷史時間範圍">
-            <option :value="5">最近 5 分鐘</option>
-            <option :value="15">最近 15 分鐘</option>
-            <option :value="60">最近 1 小時</option>
+          <select v-model="mode" aria-label="歷史時間範圍">
+            <option v-for="preset in presets" :key="preset.minutes" :value="String(preset.minutes)">{{ preset.label }}</option>
+            <option value="custom">自訂時間…</option>
           </select>
         </label>
       </div>
+      <form v-if="mode === 'custom'" class="custom-range" @submit.prevent="applyCustom">
+        <label>開始<input v-model="customStart" type="datetime-local" required aria-label="開始時間（台北）" /></label>
+        <label>結束<input v-model="customEnd" type="datetime-local" required aria-label="結束時間（台北）" /></label>
+        <button type="submit">查詢</button>
+        <span class="range-hint">台北時間，最長 24 小時</span>
+      </form>
+      <p v-if="rangeError" class="notice error" role="alert">{{ rangeError }}</p>
       <p v-if="historyError" class="notice error" role="alert">{{ historyError }}</p>
       <p v-if="truncated" class="notice">資料較多，目前顯示最近 5,000 筆。</p>
+      <p v-if="bucketSeconds" class="notice">範圍較長，曲線以每 {{ bucketSeconds }} 秒的平均值顯示。</p>
       <div v-if="!records.length" class="empty-state">
         <strong>{{ historyLoading ? '正在讀取歷史資料…' : '這段時間還沒有資料' }}</strong>
         <p>衣夾送出資料並成功儲存後，曲線會自動出現。</p>
@@ -48,7 +55,11 @@
         <div class="chart-title"><h3><i :style="{ background: sensor.color }"></i>{{ sensor.title }}</h3><span>{{ sensor.key }} · 原始計數</span></div>
         <div class="chart"><Line :data="chartData(sensor)" :options="chartOptions" /></div>
       </article>
-      <div class="history-footer">已載入 {{ records.length.toLocaleString() }} 筆 · 歷史曲線每 5 秒更新</div>
+      <div class="history-footer">
+        {{ formatTime(range.start.toISOString()) }} – {{ formatTime(range.end.toISOString()) }} ·
+        已載入 {{ records.length.toLocaleString() }} 筆 ·
+        {{ mode === 'custom' ? '自訂時間不自動更新' : `歷史曲線每 ${refreshSeconds} 秒更新` }}
+      </div>
     </section>
     <footer class="page-note">目前顯示感測器原始數值。重量、電壓、含水率與乾燥預測將在後續校正與實驗階段加入。</footer>
   </div>
@@ -78,10 +89,27 @@ const stale = ref(true);
 const loaded = ref(false);
 const historyLoading = ref(true);
 const truncated = ref(false);
-const minutes = ref(15);
+const bucketSeconds = ref(0);
+const presets = [
+  { minutes: 5, label: '最近 5 分鐘' }, { minutes: 15, label: '最近 15 分鐘' }, { minutes: 60, label: '最近 1 小時' },
+  { minutes: 360, label: '最近 6 小時' }, { minutes: 1440, label: '最近 24 小時' },
+];
+const DAY_MS = 24 * 60 * 60000;
+const mode = ref('15');  // preset minutes as text, or 'custom'
+const customStart = ref('');
+const customEnd = ref('');
+const rangeError = ref('');
+const range = ref({ start: new Date(Date.now() - 15 * 60000), end: new Date() });
 let timer: ReturnType<typeof setTimeout> | undefined;
 let stopped = false;
 let historyUpdated = 0;
+let historyRequest = 0;
+const refreshSeconds = computed(() => Number(mode.value) > 60 ? 30 : 5);
+
+// <input type="datetime-local"> has no zone; the page shows Taipei time, so read/write it as UTC+8.
+const TAIPEI_MS = 8 * 60 * 60000;
+const toTaipeiInput = (date: Date) => new Date(date.getTime() + TAIPEI_MS).toISOString().slice(0, 16);
+const fromTaipeiInput = (value: string) => new Date(`${value}:00+08:00`);
 const controllers = new Set<AbortController>();
 
 const connectionClass = computed(() => error.value || ingestionError.value ? 'failed' : !latest.value || stale.value || !mqttConnected.value ? 'waiting' : 'live');
@@ -95,14 +123,20 @@ const connectionText = computed(() => {
 });
 const formatRaw = (value: number | null | undefined) => value == null ? '—' : value.toLocaleString('en-US');
 const formatTime = (value: string) => new Date(value).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
-const timeTick = (value: number) => new Date(value).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false });
+const timeTick = (value: number) => {
+  const long = range.value.end.getTime() - range.value.start.getTime() > 6 * 60 * 60000;
+  return new Date(value).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei', hour12: false,
+    ...(long ? { month: 'numeric', day: 'numeric' } : {}), hour: '2-digit', minute: '2-digit', ...(long ? {} : { second: '2-digit' }) });
+};
 
 function chartData(sensor: Sensor) {
   const points: { x: number; y: number | null }[] = [];
   let previous: number | undefined;
+  // Break the line on a gap longer than ~3 samples (1 s raw, or one averaged bucket).
+  const gapMs = Math.max(3000, bucketSeconds.value * 2500);
   for (const record of records.value) {
     const time = new Date(record.timestamp).getTime();
-    if (previous !== undefined && time - previous > 3000) points.push({ x: previous + 1, y: null });
+    if (previous !== undefined && time - previous > gapMs) points.push({ x: previous + 1, y: null });
     points.push({ x: time, y: record[sensor.key] });
     previous = time;
   }
@@ -110,17 +144,25 @@ function chartData(sensor: Sensor) {
     borderWidth: 2, pointRadius: records.value.length === 1 ? 3 : 0, pointHitRadius: 8, spanGaps: false, tension: 0 }] };
 }
 
-const chartOptions: ChartOptions<'line'> = {
+// Round tick spacing (whole minutes/hours) so labels read 10:00, 12:00 … rather than 10:26.
+// Taipei is a whole-hour UTC offset, so multiples of these steps fall on round local times.
+const TICK_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 240, 360].map((m) => m * 60000);
+const tickStep = (spanMs: number) => TICK_STEPS.find((step) => spanMs / step <= 7) ?? TICK_STEPS[TICK_STEPS.length - 1];
+
+// Fixed x range: the axis shows the whole requested window, even when data covers only part of it.
+const chartOptions = computed<ChartOptions<'line'>>(() => ({
   responsive: true, maintainAspectRatio: false, animation: false,
   interaction: { mode: 'nearest', intersect: false },
   plugins: { legend: { display: false }, tooltip: { callbacks: {
-    title: (items) => items.length ? formatTime(new Date(items[0].parsed.x).toISOString()) : '',
+    title: (items) => items.length && items[0].parsed.x != null ? formatTime(new Date(items[0].parsed.x).toISOString()) : '',
   } } },
   scales: {
-    x: { type: 'linear', ticks: { maxTicksLimit: 6, callback: (value) => timeTick(Number(value)) }, grid: { display: false } },
+    x: { type: 'linear', min: range.value.start.getTime(), max: range.value.end.getTime(),
+      ticks: { stepSize: tickStep(range.value.end.getTime() - range.value.start.getTime()), maxTicksLimit: 8,
+        callback: (value) => timeTick(Number(value)) }, grid: { display: false } },
     y: { title: { display: true, text: '原始計數' }, ticks: { precision: 0 } },
   },
-};
+}));
 
 async function request(path: string) {
   const controller = new AbortController();
@@ -145,25 +187,49 @@ async function loadLatest() {
   } catch { if (!stopped) error.value = '無法取得最新資料'; }
 }
 
-async function loadHistory() {
-  const selectedMinutes = minutes.value;
-  const end = new Date();
-  const start = new Date(end.getTime() - selectedMinutes * 60000);
+async function loadHistory(start: Date, end: Date) {
+  const id = ++historyRequest;  // ignore responses for a range the user already left
   try {
     const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), limit: '5000' });
     const data = await request(`/api/v1/clothes/history?${params}`);
-    if (stopped || selectedMinutes !== minutes.value) return;
-    records.value = data.records; truncated.value = data.truncated;
+    if (stopped || id !== historyRequest) return;
+    range.value = { start, end };
+    records.value = data.records; truncated.value = data.truncated; bucketSeconds.value = data.bucket_seconds ?? 0;
     historyError.value = ''; historyUpdated = Date.now();
-  } catch { if (!stopped) historyError.value = '歷史資料更新失敗，正在等待重新連線。'; }
-  finally { if (!stopped) historyLoading.value = false; }
+  } catch { if (!stopped && id === historyRequest) historyError.value = '歷史資料更新失敗，正在等待重新連線。'; }
+  finally { if (!stopped && id === historyRequest) historyLoading.value = false; }
+}
+
+function loadPreset() {
+  const end = new Date();
+  return loadHistory(new Date(end.getTime() - Number(mode.value) * 60000), end);
+}
+
+function applyCustom() {
+  const start = fromTaipeiInput(customStart.value), end = fromTaipeiInput(customEnd.value);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) rangeError.value = '請輸入開始與結束時間。';
+  else if (start >= end) rangeError.value = '結束時間必須晚於開始時間。';
+  else if (end.getTime() - start.getTime() > DAY_MS) rangeError.value = '一次最多查詢 24 小時。';
+  else {
+    rangeError.value = ''; historyLoading.value = true; records.value = [];
+    void loadHistory(start, end);
+  }
 }
 
 async function poll() {
-  await Promise.all([loadLatest(), Date.now() - historyUpdated >= 5000 ? loadHistory() : Promise.resolve()]);
+  const due = mode.value !== 'custom' && Date.now() - historyUpdated >= refreshSeconds.value * 1000;
+  await Promise.all([loadLatest(), due ? loadPreset() : Promise.resolve()]);
   if (!stopped) timer = setTimeout(poll, 1000);
 }
-watch(minutes, () => { historyUpdated = 0; historyLoading.value = true; });
+watch(mode, (value) => {
+  rangeError.value = '';
+  if (value === 'custom') {
+    // Start from the window currently on screen so the user only adjusts it.
+    customStart.value = toTaipeiInput(range.value.start); customEnd.value = toTaipeiInput(range.value.end);
+    return;
+  }
+  historyUpdated = 0; historyLoading.value = true; records.value = [];
+});
 onMounted(poll);
 onUnmounted(() => { stopped = true; clearTimeout(timer); controllers.forEach((controller) => controller.abort()); });
 </script>
@@ -190,7 +256,11 @@ h1 span { font-size: 16px; font-weight: 400; margin-left: 12px; color: #61756d; 
 .history-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 16px; }
 h2 { font-size: 20px; }.history-heading p { font-size: 13px; color: #738078; margin-top: 6px; }
 label { display: flex; gap: 10px; align-items: center; font-size: 13px; white-space: nowrap; }
-select { border: 1px solid #d6e0d8; padding: 8px 12px; border-radius: 7px; color: #345142; background: white; font: inherit; }
+select, .custom-range input { border: 1px solid #d6e0d8; padding: 8px 12px; border-radius: 7px; color: #345142; background: white; font: inherit; }
+.custom-range { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; padding: 14px 16px; background: #f7faf6; border: 1px solid #dfe7e0; border-radius: 10px; }
+.custom-range button { border: 0; border-radius: 7px; padding: 9px 18px; background: #28744e; color: white; font: inherit; font-size: 13px; cursor: pointer; }
+.custom-range button:hover { background: #1f5f3f; }
+.range-hint { font-size: 12px; color: #7b887e; }
 .chart-card { background: #fff; border: 1px solid #dfe7e0; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
 .chart-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
 h3 { font-size: 14px; display: flex; gap: 8px; align-items: center; }h3 i { width: 8px; height: 8px; border-radius: 50%; }
@@ -198,5 +268,5 @@ h3 { font-size: 14px; display: flex; gap: 8px; align-items: center; }h3 i { widt
 .history-footer, .page-note { color: #7b887e; font-size: 12px; }.page-note { margin-top: 26px; border-top: 1px solid #e0e6df; padding-top: 18px; }
 .empty-state { border: 1px dashed #cbd8cf; border-radius: 12px; padding: 70px 20px; text-align: center; background: #f7faf6; }.empty-state p { font-size: 13px; color: #7b887e; margin-top: 10px; }
 .notice { padding: 12px 16px; background: #faf2df; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }.notice.error { background: #fff0ed; color: #9b4641; }
-@media (max-width: 800px) { .intro { align-items: flex-start; flex-direction: column; gap: 14px; }.reading-grid { grid-template-columns: 1fr; }.value { font-size: 32px; }.history-heading { align-items: flex-start; flex-direction: column; }.clothes-page { padding: 24px 16px; }h1 span { display: block; margin: 4px 0 0; }.chart-title span { font-size: 10px; } }
+@media (max-width: 800px) { .intro { align-items: flex-start; flex-direction: column; gap: 14px; }.reading-grid { grid-template-columns: 1fr; }.value { font-size: 32px; }.history-heading { align-items: flex-start; flex-direction: column; }.clothes-page { padding: 24px 16px; }h1 span { display: block; margin: 4px 0 0; }.chart-title span { font-size: 10px; }.custom-range label { width: 100%; justify-content: space-between; }.custom-range input { flex: 1; min-width: 0; } }
 </style>

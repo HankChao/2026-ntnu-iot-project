@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { parseClothesRaw } from '../src/clothes/validation';
 import { ingestClothesRaw } from '../src/clothes/ingest';
 import { clothesRoute } from '../src/routes/clothes';
+import { historyBucketSeconds } from '../src/clothes/store';
 
 const raw = { hx711_raw: -1500, ads1115_raw: 7799, touch_raw: 31875 };
 describe('Clothes MQTT contract', () => {
@@ -27,6 +28,16 @@ describe('Clothes MQTT contract', () => {
     const app = new Hono().route('/clothes', clothesRoute);
     expect((await app.request('/clothes/latest')).status).toBe(503);
     expect((await app.request('/clothes/history')).status).toBe(503);
+  });
+  it('picks a history bucket that keeps long ranges within the point limit', () => {
+    const start = new Date('2026-01-01T00:00:00Z');
+    const at = (seconds: number) => new Date(start.getTime() + seconds * 1000);
+    expect(historyBucketSeconds(start, at(3600), 5000)).toBe(1);
+    expect(historyBucketSeconds(start, at(6 * 3600), 5000)).toBe(5);
+    expect(historyBucketSeconds(start, at(24 * 3600), 5000)).toBe(18);
+    for (const seconds of [6 * 3600, 24 * 3600, 7777]) {
+      expect(seconds / historyBucketSeconds(start, at(seconds), 5000)).toBeLessThanOrEqual(5000);
+    }
   });
   it('bounds and validates history queries before hitting the database', async () => {
     const app = new Hono().route('/clothes', clothesRoute);

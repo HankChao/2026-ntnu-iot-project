@@ -42,11 +42,29 @@ export async function latestClothesRaw() {
   return rows[0] ?? null;
 }
 
+// Smallest whole-second bucket that keeps the range within `limit` points.
+export function historyBucketSeconds(start: Date, end: Date, limit: number) {
+  return Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 1000 / limit));
+}
+
 export async function clothesHistory(start: Date, end: Date, limit: number) {
   const sql = database();
   const rows = await sql`
     SELECT id::text, timestamp, hx711_raw, ads1115_raw, touch_raw FROM clothes_raw
     WHERE timestamp >= ${start} AND timestamp <= ${end}
     ORDER BY timestamp DESC, id DESC LIMIT ${limit + 1}`;
-  return { records: rows.slice(0, limit).reverse(), truncated: rows.length > limit };
+  if (rows.length <= limit) return { records: rows.reverse(), truncated: false, bucket_seconds: 0 };
+  // Too many raw rows: average each sensor per time bucket so the whole range stays visible.
+  // A bucket whose readings are all null stays null (read failure), it is not shown as 0.
+  const bucket = historyBucketSeconds(start, end, limit);
+  const buckets = await sql`
+    SELECT min(id)::text AS id,
+      to_timestamp(floor(extract(epoch FROM timestamp) / ${bucket}) * ${bucket}) AS timestamp,
+      round(avg(hx711_raw))::integer AS hx711_raw,
+      round(avg(ads1115_raw))::integer AS ads1115_raw,
+      round(avg(touch_raw))::integer AS touch_raw
+    FROM clothes_raw
+    WHERE timestamp >= ${start} AND timestamp <= ${end}
+    GROUP BY 2 ORDER BY 2 LIMIT ${limit}`;
+  return { records: buckets, truncated: false, bucket_seconds: bucket };
 }
