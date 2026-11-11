@@ -4,7 +4,10 @@ services:
     image: eclipse-mosquitto:2
     restart: unless-stopped
     ports:
-      - "${MQTT_PORT:-1883}:1883"
+      # Plain MQTT (ESP32 uses this on the LAN). MQTT_PLAIN_BIND=127.0.0.1 keeps it off the network.
+      - "${MQTT_PLAIN_BIND:-0.0.0.0}:${MQTT_PORT:-1883}:1883"
+      # TLS MQTT, only active after scripts/setup.sh tls.
+      - "${MQTT_TLS_PORT:-8883}:8883"
     environment:
       MQTT_USERNAME: ${MQTT_USERNAME:-maps}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
@@ -12,6 +15,8 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/start.sh:/mosquitto/config/start.sh:ro
+      - ./mosquitto/conf.d:/mosquitto/config/conf.d:ro
+      - ./mosquitto/certs:/mosquitto/certs:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 

@@ -10,19 +10,20 @@
 需要 Docker Desktop（啟動 Linux containers）。在 repository 根目錄執行：
 
 ```powershell
-Copy-Item .env.example .env
-# 必須編輯 .env 的 MQTT_PASSWORD，設定自己的密碼；也可調整帳號與連接埠
+# 建立 .env、產生 MQTT 密碼，並印出 ESP32 與 MAPS 盒子要填的設定（macOS/Linux: ./scripts/setup.sh）
 # .env 不會上傳 GitHub
+.\scripts\setup.ps1
 docker compose up -d --build
+.\scripts\setup.ps1 check   # 確認 MQTT 帳密正確、列出被拒絕的裝置
 ```
 
 - 智慧衣夾：http://localhost:8088
 - 原有空氣盒子：http://localhost:8088/air
 - MQTT：這台電腦的區域網路 IP，預設 port 1883
-- MQTT 帳號預設 `maps`；密碼由本機 `.env` 設定，ESP32 設定必須一致。
+- MQTT 帳號預設 `maps`；密碼由本機 `.env` 設定。**ESP32 與 MAPS 盒子都必須使用同一組帳密**，否則 broker 會拒絕連線。帳密流程、所有 topic 與 TLS 設定見 [docs/MQTT.md](docs/MQTT.md)。
 - 換展示場地：修改 ESP32 的 Wi-Fi 與 broker IP，重新燒錄。電腦與 ESP32 需能互通，使用 2.4 GHz Wi-Fi；防火牆需允許 TCP 1883。ESP32 的 broker 不能填 localhost。
 
-這版沿用上游展示用認證機制，適合受信任的本機展示網路；尚未完成公開網際網路部署所需的認證與 TLS。
+這版沿用上游展示用認證機制，適合受信任的本機展示網路。若需要讓外網的 MAPS 盒子透過 port forwarding 連線，可以啟用 8883 TLS（見 [docs/MQTT.md](docs/MQTT.md#6-tls-與-port-forwarding8883)）；ESP32 韌體仍只支援區網內不加密的 1883。
 
 ## ESP32 快速設定
 
