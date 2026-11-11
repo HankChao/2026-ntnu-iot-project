@@ -18,7 +18,7 @@
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
 #include "esp_crt_bundle.h"
-#include "mqtt_client.h"
+#include "network_setup.h"
 #include "freertos/event_groups.h"
 #include "freertos/queue.h"
 #include "app_config.h"
@@ -150,120 +150,19 @@ static bool read_raw(int32_t *result)
     return true;
 }
 
-#define WIFI_UP BIT0
-#define MQTT_UP BIT1
-static EventGroupHandle_t connection;
-static esp_mqtt_client_handle_t mqtt;
 static QueueHandle_t pending;
 typedef struct {
     char json[160];
     int64_t sampled_us;
 } packet_t;
 
-static void network_event(void *arg, esp_event_base_t base, int32_t id, void *data)
-{
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
-    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        xEventGroupClearBits(connection, WIFI_UP | MQTT_UP);
-        xQueueReset(pending);
-        // Reconnect attempts are paced by ESP Wi-Fi's scan/auth attempt.
-        esp_wifi_connect();
-        output("NET Wi-Fi disconnected; reconnecting\r\n");
-    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-        xEventGroupSetBits(connection, WIFI_UP);
-        output("NET Wi-Fi connected; IP acquired\r\n");
-    }
-}
-
-static void mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *data)
-{
-    if (id == MQTT_EVENT_CONNECTED) {
-        xQueueReset(pending);
-        xEventGroupSetBits(connection, MQTT_UP);
-        output("NET MQTT connected; topic=%s\r\n", APP_MQTT_TOPIC);
-    } else if (id == MQTT_EVENT_DISCONNECTED) {
-        xEventGroupClearBits(connection, MQTT_UP);
-        xQueueReset(pending);
-        output("NET MQTT disconnected; new samples only after reconnect\r\n");
-    } else if (id == MQTT_EVENT_ERROR) {
-        output("NET MQTT error; check broker address/port/authentication\r\n");
-    }
-}
-
 static void publish_task(void *arg)
 {
     packet_t packet;
     for (;;) {
-        if (xQueueReceive(pending, &packet, portMAX_DELAY) != pdTRUE) continue;
-        if (!(xEventGroupGetBits(connection) & MQTT_UP)) continue;
-        if (esp_timer_get_time() - packet.sampled_us > APP_SAMPLE_PERIOD_MS * 1000LL) continue;
-        // QoS 0 avoids MQTT retransmission/outbox replay. Never enqueue offline records.
-        int result = esp_mqtt_client_publish(mqtt, APP_MQTT_TOPIC, packet.json, 0, 0, 0);
-        if (result < 0) output("NET publish failed; record discarded\r\n");
+        if (xQueueReceive(pending, &packet, portMAX_DELAY) == pdTRUE)
+            network_publish(packet.json, packet.sampled_us);
     }
-}
-
-static void mqtt_start_task(void *arg)
-{
-    xEventGroupWaitBits(connection, WIFI_UP, pdFALSE, pdTRUE, portMAX_DELAY);
-#if APP_MQTT_TLS
-    // Certificate validity requires a real clock, even though telemetry has no timestamp.
-    esp_sntp_config_t time_config = ESP_NETIF_SNTP_DEFAULT_CONFIG(APP_SNTP_SERVER);
-    ESP_ERROR_CHECK(esp_netif_sntp_init(&time_config));
-    while (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(30000)) != ESP_OK) {
-        output("NET waiting for network time; TLS verification remains enabled\r\n");
-    }
-    output("NET time synchronized; starting verified MQTT TLS\r\n");
-#endif
-    ESP_ERROR_CHECK(esp_mqtt_client_start(mqtt));
-    vTaskDelete(NULL);
-}
-
-static void network_init(void)
-{
-    if (!strlen(APP_WIFI_SSID) || !strlen(APP_MQTT_HOST)) {
-        output("NET disabled: fill main/app_config.h Wi-Fi SSID and MQTT host, then upload\r\n");
-        return;
-    }
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_t *netif = esp_netif_create_default_wifi_sta();
-    assert(netif);
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&init));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, network_event, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, network_event, NULL));
-    wifi_config_t wifi = {0};
-    _Static_assert(sizeof(APP_WIFI_SSID) <= 33, "Wi-Fi SSID exceeds 32 bytes");
-    _Static_assert(sizeof(APP_WIFI_PASSWORD) <= 65, "Wi-Fi password exceeds 64 bytes");
-    memcpy(wifi.sta.ssid, APP_WIFI_SSID, sizeof(APP_WIFI_SSID)-1);
-    memcpy(wifi.sta.password, APP_WIFI_PASSWORD, sizeof(APP_WIFI_PASSWORD)-1);
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi));
-
-    const esp_mqtt_client_config_t config = {
-        .broker.address.hostname = APP_MQTT_HOST,
-        .broker.address.port = APP_MQTT_PORT,
-        .broker.address.transport = APP_MQTT_TLS ? MQTT_TRANSPORT_OVER_SSL : MQTT_TRANSPORT_OVER_TCP,
-#if APP_MQTT_TLS
-        .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
-#endif
-        .credentials.username = strlen(APP_MQTT_USERNAME) ? APP_MQTT_USERNAME : NULL,
-        .credentials.authentication.password = strlen(APP_MQTT_USERNAME) ? APP_MQTT_PASSWORD : NULL,
-        .session.keepalive = 30,
-        .network.timeout_ms = 10000,
-        .network.reconnect_timeout_ms = 3000,
-    };
-    mqtt = esp_mqtt_client_init(&config);
-    assert(mqtt);
-    ESP_ERROR_CHECK(esp_mqtt_client_register_event(mqtt, ESP_EVENT_ANY_ID, mqtt_event, NULL));
-    BaseType_t created = xTaskCreate(publish_task, "raw_publish", 4096, NULL, 4, NULL);
-    ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
-    created = xTaskCreate(mqtt_start_task, "mqtt_start", 4096, NULL, 4, NULL);
-    ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
-    ESP_ERROR_CHECK(esp_wifi_start());
 }
 
 void app_main(void)
@@ -271,9 +170,8 @@ void app_main(void)
     usb_serial_jtag_driver_config_t usb = { .tx_buffer_size=2048, .rx_buffer_size=256 };
     ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&usb));
     ESP_ERROR_CHECK(nvs_flash_init());
-    connection = xEventGroupCreate();
     pending = xQueueCreate(1, sizeof(packet_t));
-    assert(connection && pending);
+    assert(pending);
     ads_init();
     touch_init();
     gpio_config_t input = {.pin_bit_mask=1ULL << DT, .mode=GPIO_MODE_INPUT,
@@ -283,7 +181,8 @@ void app_main(void)
     ESP_ERROR_CHECK(gpio_config(&clock));
     gpio_set_level(SCK, 0);
     output("\r\nRAW telemetry: HX711 GPIO4/5, ADS SDA8/SCL9, touch GPIO10\r\n");
-    network_init();
+    network_setup_init();
+    assert(xTaskCreate(publish_task, "raw_publish", 4096, NULL, 4, NULL) == pdPASS);
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         packet_t packet = {.sampled_us=esp_timer_get_time()};
@@ -301,7 +200,7 @@ void app_main(void)
                  "{\"hx711_raw\":%s,\"ads1115_raw\":%s,\"touch_raw\":%s}",
                  hx_text, ads_text, touch_text);
         output("%s\r\n", packet.json);
-        if (xEventGroupGetBits(connection) & MQTT_UP) xQueueOverwrite(pending, &packet);
+        if (network_ready()) xQueueOverwrite(pending, &packet);
         // Fixed cadence, no burst/catch-up after a slow or failed measurement.
         if (xTaskDelayUntil(&last, pdMS_TO_TICKS(APP_SAMPLE_PERIOD_MS)) == pdFALSE) {
             last = xTaskGetTickCount();

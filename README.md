@@ -20,7 +20,7 @@ docker compose up -d --build
 - 原有空氣盒子：http://localhost:8088/air
 - MQTT：這台電腦的區域網路 IP，預設 port 1883
 - MQTT 帳號預設 `maps`；密碼由本機 `.env` 設定，ESP32 設定必須一致。
-- 換展示場地：修改 ESP32 的 Wi-Fi 與 broker IP，重新燒錄。電腦與 ESP32 需能互通，使用 2.4 GHz Wi-Fi；防火牆需允許 TCP 1883。ESP32 的 broker 不能填 localhost。
+- 換展示場地：開機後長按 ESP32 GPIO0 約 3 秒，手機連上設定熱點、開啟 `192.168.4.1` 即可換 Wi-Fi 與 MQTT，不需重新燒錄。使用本機 broker 時，電腦與 ESP32 需能互通，防火牆需允許 TCP 1883；ESP32 的 broker 不能填 localhost。
 
 這版沿用上游展示用認證機制，適合受信任的本機展示網路；尚未完成公開網際網路部署所需的認證與 TLS。
 
@@ -28,7 +28,7 @@ docker compose up -d --build
 
 程式位於 [firmware/esp32-s3](firmware/esp32-s3)，使用 **ESP-IDF 6.1**，不是 Arduino sketch。
 
-將 `main/app_config.example.h` 複製成 `main/app_config.h`，集中填入 Wi-Fi 名稱、密碼、MQTT IP、port、帳密。實際設定檔已加入 gitignore。
+首次燒錄後可用手機熱點配網；Wi-Fi 與 MQTT 設定會保存到板子的 NVS，斷電仍保留。也可將 `main/app_config.example.h` 複製成 `main/app_config.h`，填入初始設定；已保存的 NVS 設定優先，實際設定檔已加入 gitignore。
 完整接線、編譯與燒錄步驟見 [韌體操作說明](firmware/esp32-s3/README.md)。
 
 遠端 broker 可啟用 `APP_MQTT_TLS 1`、設定 port 8883，韌體會校時並驗證伺服器憑證。改送遠端後，請使用對應的遠端網站觀察資料；本機儀表板不會自動同步遠端資料。設定方式見韌體操作說明的「遠端 MQTT TLS」。

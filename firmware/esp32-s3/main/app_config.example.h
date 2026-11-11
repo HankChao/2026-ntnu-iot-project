@@ -1,7 +1,9 @@
 #pragma once
 
-// ===== Quick setup: edit these values, then build and upload =====
-// Use a 2.4 GHz Wi-Fi network. Empty SSID = USB raw monitoring only.
+// ===== Initial defaults only; saved phone setup in NVS takes precedence =====
+// Use 2.4 GHz Wi-Fi. Blank settings + no saved NVS => phone setup hotspot.
+// After boot hold GPIO0 for 3 seconds; connect to Clothes-Setup-xxxx and open 192.168.4.1.
+// The unique hotspot password is printed over USB (115200); USB command: setup + Enter.
 #define APP_WIFI_SSID       ""
 #define APP_WIFI_PASSWORD   ""
 
