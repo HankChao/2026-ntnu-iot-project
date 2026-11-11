@@ -51,12 +51,12 @@ Topic：`clothes/raw`。每秒一筆，QoS 0、retain=false，斷線不補傳歷
 
 ## 網頁與資料庫
 
-首頁顯示三個原始值、server 收到時間、最近 5/15/60 分鐘曲線。超過 10 秒沒新資料會提示；null 與資料中斷會讓曲線斷開。
+首頁顯示三個原始值、server 收到時間與歷史曲線：可選最近 5 分鐘、15 分鐘、1 小時、6 小時、24 小時，或自訂開始／結束時間（台北時間，一次最多 24 小時；自訂範圍不自動更新）。超過 10 秒沒新資料會提示；null 與資料中斷會讓曲線斷開。
 
 資料存在獨立 `clothes_raw` 表；server 啟動時自動建立表與索引，也附上 `db/migrations/001_clothes_raw.sql`。原有空氣資料表與 MQTT topics 保留。
 
 - `GET /api/v1/clothes/latest`：最新一筆、資料年齡、MQTT 狀態。
-- `GET /api/v1/clothes/history?start=<ISO時間>&end=<ISO時間>&limit=5000`：時間範圍內資料，按時間遞增；最多查 24 小時、5000 筆，超出時回傳 truncated。
+- `GET /api/v1/clothes/history?start=<ISO時間>&end=<ISO時間>&limit=5000`：時間範圍內資料，按時間遞增；最多查 24 小時；資料超過 limit 筆時，改回傳每 `bucket_seconds` 秒的平均值，讓整段範圍都看得到（全為 null 的區間仍為 null）。
 - DB 無法讀取時回傳 503，不以假資料或記憶體資料冒充成功。
 
 PostgreSQL 使用 Docker volume，重新啟動會保留資料。不要執行 `docker compose down -v`，那會刪除本專案的資料 volume。
