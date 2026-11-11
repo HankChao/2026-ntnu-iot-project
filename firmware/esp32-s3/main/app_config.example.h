@@ -3,7 +3,8 @@
 // ===== Initial defaults only; saved phone setup in NVS takes precedence =====
 // Use 2.4 GHz Wi-Fi. Blank settings + no saved NVS => phone setup hotspot.
 // After boot hold GPIO0 for 3 seconds; connect to Clothes-Setup-xxxx and open 192.168.4.1.
-// The unique hotspot password is printed over USB (115200); USB command: setup + Enter.
+// Hotspot password (WPA2, 8-63 chars). Also printed over USB (115200); USB command: setup + Enter.
+#define APP_SETUP_AP_PASSWORD "12345678"
 #define APP_WIFI_SSID       ""
 #define APP_WIFI_PASSWORD   ""
 

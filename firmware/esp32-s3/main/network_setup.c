@@ -36,6 +36,12 @@
 #ifndef APP_SNTP_SERVER
 #define APP_SNTP_SERVER "pool.ntp.org"
 #endif
+#ifndef APP_SETUP_AP_PASSWORD
+#define APP_SETUP_AP_PASSWORD "12345678"
+#endif
+// WPA2-PSK passphrase: 8-63 characters.
+_Static_assert(sizeof(APP_SETUP_AP_PASSWORD) >= 9 && sizeof(APP_SETUP_AP_PASSWORD) <= 64,
+    "APP_SETUP_AP_PASSWORD must be 8-63 characters");
 
 #define WIFI_UP BIT0
 #define MQTT_UP BIT1
@@ -65,7 +71,7 @@ static httpd_handle_t server;
 static bool ap_open, testing, allow_publish, reconnect_wifi, portal_paused_sta;
 static int last_reason;
 static char phase[24] = "connecting", message[192] = "正在連線";
-static char ap_ssid[33], ap_password[17], csrf[33];
+static char ap_ssid[33], ap_password[64], csrf[33];
 static int64_t close_at, ap_expire_at;
 
 extern const unsigned char portal_start[] asm("_binary_setup_portal_html_start");
@@ -121,15 +127,7 @@ static void load_settings(void)
     uint8_t mac[6];
     ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP));
     snprintf(ap_ssid, sizeof(ap_ssid), "Clothes-Setup-%02X%02X", mac[4], mac[5]);
-    ESP_ERROR_CHECK(nvs_open("clothes_net", NVS_READWRITE, &handle));
-    size_t size = sizeof(ap_password);
-    if (nvs_get_str(handle, "ap_password", ap_password, &size) != ESP_OK || strlen(ap_password) != 16) {
-        uint32_t random[2]; esp_fill_random(random, sizeof(random));
-        snprintf(ap_password, sizeof(ap_password), "%08lx%08lx", (unsigned long)random[0], (unsigned long)random[1]);
-        ESP_ERROR_CHECK(nvs_set_str(handle, "ap_password", ap_password));
-        ESP_ERROR_CHECK(nvs_commit(handle));
-    }
-    nvs_close(handle);
+    snprintf(ap_password, sizeof(ap_password), "%s", APP_SETUP_AP_PASSWORD);
 }
 
 static void time_synced(struct timeval *tv)
