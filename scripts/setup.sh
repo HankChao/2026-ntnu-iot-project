@@ -309,12 +309,13 @@ make_self_signed() {
 
   if [ ! -f "$CERT_DIR/ca.key" ] || [ ! -f "$CERT_DIR/ca.crt" ]; then
     openssl_run req -x509 -new -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 3650 \
-      -subj "/CN=MAPS MQTT CA" >/dev/null 2>&1 || die "Failed to create CA"
+      -subj "/CN=MAPS MQTT CA" -addext "basicConstraints=critical,CA:TRUE" \
+      -addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1 || die "Failed to create CA"
     info "Created CA ${CERT_DIR}/ca.crt (keep ca.key private)"
   else
     info "Reusing existing CA ${CERT_DIR}/ca.crt"
   fi
-  printf 'subjectAltName=%s\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' "$san" >"$CERT_DIR/server.ext"
+  printf 'subjectAltName=%s\nbasicConstraints=CA:FALSE\nkeyUsage=digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n' "$san" >"$CERT_DIR/server.ext"
   openssl_run req -new -newkey rsa:2048 -nodes -keyout server.key -out server.csr -subj "/CN=$first" >/dev/null 2>&1 \
     || die "Failed to create server key"
   openssl_run x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 825 \

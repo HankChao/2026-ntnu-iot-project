@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to tools/config.json (gitignored). Empty values fall back to the repository .env, then local defaults.",
+  "base_url": "",
+  "local_stack": true,
+  "mqtt": {
+    "host": "localhost",
+    "port": "",
+    "tls": false,
+    "ca_file": "",
+    "username": "",
+    "password": ""
+  },
+  "topics": {
+    "clothes": "",
+    "maps_prefix": "MAPS"
+  },
+  "maps_test_device": "SMOKE-TEST-01"
+}

@@ -269,12 +269,12 @@ function New-SelfSigned([string]$hosts) {
     $first = ($hosts -split ',')[0].Trim()
 
     if (-not (Test-Path (Join-Path $CertDir 'ca.key')) -or -not (Test-Path (Join-Path $CertDir 'ca.crt'))) {
-        if ((Invoke-OpenSsl @('req', '-x509', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.crt', '-days', '3650', '-subj', '/CN=MAPS MQTT CA')) -ne 0) { Die 'Failed to create CA' }
+        if ((Invoke-OpenSsl @('req', '-x509', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.crt', '-days', '3650', '-subj', '/CN=MAPS MQTT CA', '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign')) -ne 0) { Die 'Failed to create CA' }
         Info 'Created CA mosquitto/certs/ca.crt (keep ca.key private)'
     } else {
         Info 'Reusing existing CA mosquitto/certs/ca.crt'
     }
-    [IO.File]::WriteAllText((Join-Path $CertDir 'server.ext'), "subjectAltName=$sanText`nbasicConstraints=CA:FALSE`nkeyUsage=digitalSignature,keyEncipherment`nextendedKeyUsage=serverAuth`n", (New-Object Text.UTF8Encoding $false))
+    [IO.File]::WriteAllText((Join-Path $CertDir 'server.ext'), "subjectAltName=$sanText`nbasicConstraints=CA:FALSE`nkeyUsage=digitalSignature,keyEncipherment`nextendedKeyUsage=serverAuth`nsubjectKeyIdentifier=hash`nauthorityKeyIdentifier=keyid,issuer`n", (New-Object Text.UTF8Encoding $false))
     if ((Invoke-OpenSsl @('req', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'server.key', '-out', 'server.csr', '-subj', "/CN=$first")) -ne 0) { Die 'Failed to create server key' }
     if ((Invoke-OpenSsl @('x509', '-req', '-in', 'server.csr', '-CA', 'ca.crt', '-CAkey', 'ca.key', '-CAcreateserial', '-out', 'server.crt', '-days', '825', '-extfile', 'server.ext')) -ne 0) { Die 'Failed to sign server certificate' }
     foreach ($f in 'server.csr', 'server.ext', 'ca.srl') { Remove-Item (Join-Path $CertDir $f) -ErrorAction SilentlyContinue }

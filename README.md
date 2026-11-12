@@ -74,10 +74,11 @@ docker compose exec -T -e SIM_COUNT=60 app bun scripts/publish-clothes.ts
 
 ```powershell
 docker compose exec -T app bun test
-python tools/smoke_clothes.py
+python tools/smoke_clothes.py   # clothes/raw
+python tools/smoke_maps.py      # MAPS/<id>/online、status、sensor
 ```
 
-smoke 測試會寫測試讀值、重啟本專案 app，驗證 MQTT、DB、API、重啟保存及斷線提示。請在沒有真實 ESP32 發送的展示環境執行。測試資料會保留。
+smoke 測試會寫測試讀值，驗證 MQTT、DB、API；clothes 測試另外會重啟本專案 app，檢查重啟後資料仍保存，以及斷線提示。請在沒有真實裝置發送的展示環境執行，測試資料會保留。網址與帳密預設讀 `.env`，要測遠端或 TLS 時改用 `tools/config.json`，見 [tools/README.md](tools/README.md)。
 
 ## 專案結構
 
