@@ -78,7 +78,7 @@ python tools/smoke_clothes.py   # clothes/raw
 python tools/smoke_maps.py      # MAPS/<id>/online、status、sensor
 ```
 
-smoke 測試會寫測試讀值，驗證 MQTT、DB、API；clothes 測試另外會重啟本專案 app，檢查重啟後資料仍保存，以及斷線提示。請在沒有真實裝置發送的展示環境執行，測試資料會保留。網址與帳密預設讀 `.env`，要測遠端或 TLS 時改用 `tools/config.json`，見 [tools/README.md](tools/README.md)。
+smoke 測試會寫測試讀值，驗證 MQTT、DB、API；clothes 測試另外會重啟本專案 app，檢查重啟後資料仍保存，以及斷線提示。請在沒有真實裝置發送的展示環境執行，測試資料會保留。執行前先把 `tools/config.example.json` 複製成 `tools/config.json`，填入網址與帳密（不會讀 `.env`），見 [tools/README.md](tools/README.md)。
 
 ## 專案結構
 

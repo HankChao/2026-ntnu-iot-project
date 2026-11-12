@@ -13,6 +13,7 @@
 ## 執行
 
 ```bash
+cp tools/config.example.json tools/config.json   # 填入網址與帳密（Windows: Copy-Item）
 docker compose up -d --build
 python tools/smoke_clothes.py
 python tools/smoke_maps.py
@@ -20,9 +21,9 @@ python tools/smoke_maps.py
 
 ## 網址與帳密設定
 
-預設直接讀取根目錄 `.env`（`MQTT_USERNAME`、`MQTT_PASSWORD`、`MQTT_PORT`、`WEB_PORT`、`CLOTHES_MQTT_TOPIC`），測本機時不需要額外設定。
+所有設定都**只讀 `tools/config.json`**（已加入 gitignore），不會讀 `.env`。檔案不存在，或缺少必填欄位時，測試會直接停止並列出缺少的欄位。除了 `mqtt.ca_file`，其他欄位都是必填。
 
-要測遠端 server 或 TLS 時，把 `config.example.json` 複製成 `tools/config.json`（已加入 gitignore），只填要覆寫的欄位，留空的欄位會沿用 `.env`：
+測本機時，`port`、`username`、`password` 要和 `.env` 的 `MQTT_PORT`、`MQTT_USERNAME`、`MQTT_PASSWORD` 一致，`base_url` 的 port 要和 `WEB_PORT` 一致。測遠端或 TLS 的範例：
 
 ```json
 {
@@ -30,6 +31,7 @@ python tools/smoke_maps.py
   "local_stack": false,
   "mqtt": { "host": "iot.example.org", "port": 8883, "tls": true, "ca_file": "",
             "username": "clothos", "password": "..." },
+  "topics": { "clothes": "clothes/raw", "maps_prefix": "MAPS" },
   "maps_test_device": "SMOKE-TEST-01"
 }
 ```
@@ -37,7 +39,7 @@ python tools/smoke_maps.py
 | 欄位 | 說明 |
 |---|---|
 | `base_url` | 網站網址，API 走 `<base_url>/api/v1/...` |
-| `local_stack` | `true` 才會執行 `docker compose restart app`；遠端請設 `false` |
+| `local_stack` | `true` 才會在 repo 根目錄執行 `docker compose restart app`（docker compose 本身要用專案的 `.env`）；測遠端請設 `false` |
 | `mqtt.host` / `port` | broker 位址；TLS 時 host 要填憑證上的名稱 |
 | `mqtt.tls` / `ca_file` | 啟用 TLS；自簽憑證時 `ca_file` 填 `mosquitto/certs/ca.crt`，公開 CA 則留空 |
 | `mqtt.username` / `password` | MQTT 帳密 |

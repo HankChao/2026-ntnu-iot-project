@@ -1,10 +1,7 @@
 """Shared settings and a tiny stdlib MQTT publisher for the smoke tests.
 
-Settings come from, in order of precedence:
-  1. tools/config.json        (gitignored; copy tools/config.example.json)
-  2. the repository .env      (MQTT_USERNAME / MQTT_PASSWORD / MQTT_PORT / WEB_PORT / CLOTHES_MQTT_TOPIC)
-  3. built-in local defaults
-Empty strings in config.json mean "use the next source".
+All settings come from tools/config.json (gitignored; copy tools/config.example.json).
+Nothing is read from .env, so the tests can target any server.
 """
 import json
 import socket
@@ -17,50 +14,27 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = Path(__file__).resolve().parent / 'config.json'
-
-
-def read_env():
-    values = {}
-    path = ROOT / '.env'
-    if path.exists():
-        for line in path.read_text(encoding='utf-8').splitlines():
-            if '=' in line and not line.lstrip().startswith('#'):
-                key, value = line.split('=', 1)
-                values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
+REQUIRED = [
+    'base_url', 'local_stack', 'mqtt.host', 'mqtt.port', 'mqtt.tls', 'mqtt.username', 'mqtt.password',
+    'topics.clothes', 'topics.maps_prefix', 'maps_test_device',
+]
 
 
 def load_config():
-    env = read_env()
-    config = {
-        'base_url': 'http://localhost:' + (env.get('WEB_PORT') or '8088'),
-        'local_stack': True,
-        'mqtt': {
-            'host': 'localhost',
-            'port': int(env.get('MQTT_PORT') or 1883),
-            'tls': False,
-            'ca_file': '',
-            'username': env.get('MQTT_USERNAME') or 'clothos',
-            'password': env.get('MQTT_PASSWORD', ''),
-        },
-        'topics': {
-            'clothes': env.get('CLOTHES_MQTT_TOPIC') or 'clothes/raw',
-            'maps_prefix': 'MAPS',
-        },
-        'maps_test_device': 'SMOKE-TEST-01',
-    }
-    if CONFIG_PATH.exists():
-        override = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
-        for key, value in override.items():
-            if key.startswith('_') or value in ('', None):
-                continue
-            if isinstance(value, dict):
-                config[key].update({k: v for k, v in value.items() if v not in ('', None)})
-            else:
-                config[key] = value
+    if not CONFIG_PATH.exists():
+        raise SystemExit('tools/config.json not found: copy tools/config.example.json and fill it in')
+    config = json.loads(CONFIG_PATH.read_text(encoding='utf-8'))
+    missing = []
+    for key in REQUIRED:
+        value = config
+        for part in key.split('.'):
+            value = value.get(part) if isinstance(value, dict) else None
+        if value is None or value == '':
+            missing.append(key)
+    if missing:
+        raise SystemExit('tools/config.json is missing: ' + ', '.join(missing))
     config['base_url'] = config['base_url'].rstrip('/')
-    if not config['mqtt']['password']:
-        raise SystemExit('MQTT password missing: set it in .env (scripts/setup.sh) or tools/config.json')
+    config['mqtt'].setdefault('ca_file', '')
     return config
 
 

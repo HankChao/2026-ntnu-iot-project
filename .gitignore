@@ -16,3 +16,5 @@ mosquitto/certs/*
 !mosquitto/certs/.gitkeep
 mosquitto/conf.d/*.conf
 tools/config.json
+__pycache__/
+*.pyc

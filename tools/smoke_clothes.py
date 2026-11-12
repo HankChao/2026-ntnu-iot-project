@@ -2,7 +2,7 @@
 
 Run after docker compose up -d --build, with no real sensor publishing.
 Creates test records and (with local_stack) restarts the app to check persistence.
-No data is deleted. Broker URL and credentials come from tools/config.json or .env.
+No data is deleted. Server URL, broker and credentials come from tools/config.json.
 """
 import json
 import subprocess

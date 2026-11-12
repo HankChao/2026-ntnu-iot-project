@@ -1,17 +1,17 @@
 {
-  "_comment": "Copy to tools/config.json (gitignored). Empty values fall back to the repository .env, then local defaults.",
-  "base_url": "",
+  "_comment": "Copy to tools/config.json (gitignored). All fields are required except mqtt.ca_file.",
+  "base_url": "http://localhost:8088",
   "local_stack": true,
   "mqtt": {
     "host": "localhost",
-    "port": "",
+    "port": 1883,
     "tls": false,
     "ca_file": "",
-    "username": "",
+    "username": "clothos",
     "password": ""
   },
   "topics": {
-    "clothes": "",
+    "clothes": "clothes/raw",
     "maps_prefix": "MAPS"
   },
   "maps_test_device": "SMOKE-TEST-01"
