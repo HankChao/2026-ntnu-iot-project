@@ -16,6 +16,9 @@ MOSQUITTO_IMAGE="eclipse-mosquitto:2"
 
 if [ -f mosquitto/start.sh ]; then PASSWD_MODE="generated"; else PASSWD_MODE="file"; fi
 if [ -d firmware ]; then HAS_ESP32=1; else HAS_ESP32=0; fi
+# Firmware with APP_MQTT_TLS verifies the broker against public CAs + hostname only.
+ESP32_CONFIG_EXAMPLE="firmware/esp32-s3/main/app_config.example.h"
+if [ "$HAS_ESP32" = 1 ] && grep -q 'APP_MQTT_TLS' "$ESP32_CONFIG_EXAMPLE" 2>/dev/null; then ESP32_TLS=1; else ESP32_TLS=0; fi
 
 usage() {
   cat <<'EOF'
@@ -246,16 +249,34 @@ EOF
 
   if [ "$HAS_ESP32" = 1 ]; then
     echo
-    info "ESP32: firmware/esp32-s3/main/app_config.h  (plain MQTT on the LAN only)"
-    cat <<EOF
-#define APP_MQTT_HOST       "${ip}"
-#define APP_MQTT_PORT       ${port}
+    if [ "$ESP32_TLS" = 1 ] && tls_enabled && ! tls_has_ca; then
+      info "ESP32: firmware/esp32-s3/main/app_config.h or the phone setup page (TLS)"
+      cat <<EOF
+#define APP_MQTT_HOST       "${tls_host:-<domain on the certificate>}"
+#define APP_MQTT_PORT       ${tls_port}
+#define APP_MQTT_TLS        1
 #define APP_MQTT_USERNAME   "${user}"
 #define APP_MQTT_PASSWORD   "${pass}"
 #define APP_MQTT_TOPIC      "${topic}"
 EOF
-    if [ "$plain_bind" = "127.0.0.1" ]; then
-      warn "MQTT_PLAIN_BIND=127.0.0.1: port ${port} is closed to the LAN, so the ESP32 cannot connect. Re-run 'scripts/setup.sh tls ... --keep-lan-plain'."
+    else
+      info "ESP32: firmware/esp32-s3/main/app_config.h  (plain MQTT on the LAN)"
+      echo "#define APP_MQTT_HOST       \"${ip}\""
+      echo "#define APP_MQTT_PORT       ${port}"
+      if [ "$ESP32_TLS" = 1 ]; then echo "#define APP_MQTT_TLS        0"; fi
+      cat <<EOF
+#define APP_MQTT_USERNAME   "${user}"
+#define APP_MQTT_PASSWORD   "${pass}"
+#define APP_MQTT_TOPIC      "${topic}"
+EOF
+      if tls_has_ca; then
+        warn "The ESP32 only trusts public CAs, so it cannot use this self-signed certificate; keep it on plain MQTT in the LAN."
+      elif tls_enabled; then
+        warn "This firmware has no APP_MQTT_TLS support, so the ESP32 stays on plain MQTT in the LAN."
+      fi
+      if [ "$plain_bind" = "127.0.0.1" ]; then
+        warn "MQTT_PLAIN_BIND=127.0.0.1: port ${port} is closed to the LAN, so the ESP32 cannot connect. Re-run 'scripts/setup.sh tls ... --keep-lan-plain'."
+      fi
     fi
   fi
 }
@@ -280,7 +301,7 @@ make_self_signed() {
   done
   [ -n "$san" ] || die "--host is required with --self-signed"
 
-  if [ ! -f "$CERT_DIR/ca.key" ]; then
+  if [ ! -f "$CERT_DIR/ca.key" ] || [ ! -f "$CERT_DIR/ca.crt" ]; then
     openssl_run req -x509 -new -newkey rsa:2048 -nodes -keyout ca.key -out ca.crt -days 3650 \
       -subj "/CN=MAPS MQTT CA" >/dev/null 2>&1 || die "Failed to create CA"
     info "Created CA ${CERT_DIR}/ca.crt (keep ca.key private)"
@@ -297,8 +318,7 @@ make_self_signed() {
 }
 
 cmd_tls() {
-  local mode="" hosts="" cert="" key="" ca="" keep_plain
-  if [ "$HAS_ESP32" = 1 ]; then keep_plain=1; else keep_plain=0; fi
+  local mode="" hosts="" cert="" key="" ca="" keep_plain=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --self-signed) mode="self"; shift ;;
@@ -315,6 +335,14 @@ cmd_tls() {
   done
   [ -f "$ENV_FILE" ] || die ".env not found. Run scripts/setup.sh first."
   mkdir -p "$CERT_DIR" mosquitto/conf.d
+  # The ESP32 needs plain MQTT on the LAN unless its firmware can verify this certificate.
+  if [ -z "$keep_plain" ]; then
+    if [ "$HAS_ESP32" = 1 ] && { [ "$mode" = "self" ] || [ -n "$ca" ] || [ "$ESP32_TLS" = 0 ]; }; then
+      keep_plain=1
+    else
+      keep_plain=0
+    fi
+  fi
 
   case "$mode" in
     disable)

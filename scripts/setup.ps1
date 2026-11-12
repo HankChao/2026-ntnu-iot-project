@@ -33,6 +33,9 @@ $TlsConf = Join-Path $Root 'mosquitto/conf.d/tls.conf'
 $MosquittoImage = 'eclipse-mosquitto:2'
 $PasswdMode = if (Test-Path (Join-Path $Root 'mosquitto/start.sh')) { 'generated' } else { 'file' }
 $HasEsp32 = Test-Path (Join-Path $Root 'firmware')
+# Firmware with APP_MQTT_TLS verifies the broker against public CAs + hostname only.
+$Esp32ConfigExample = Join-Path $Root 'firmware/esp32-s3/main/app_config.example.h'
+$Esp32Tls = $HasEsp32 -and (Test-Path $Esp32ConfigExample) -and [bool](Select-String -LiteralPath $Esp32ConfigExample -Pattern 'APP_MQTT_TLS' -Quiet)
 $IsWin = ($PSVersionTable.PSEdition -eq 'Desktop') -or $IsWindows
 
 function Info($msg) { Write-Host "==> $msg" -ForegroundColor Green }
@@ -216,10 +219,23 @@ function Invoke-Show {
 
     if ($HasEsp32) {
         Write-Host ''
-        Info 'ESP32: firmware/esp32-s3/main/app_config.h  (plain MQTT on the LAN only)'
-        Write-Host "#define APP_MQTT_HOST       `"$ip`"`n#define APP_MQTT_PORT       $port`n#define APP_MQTT_USERNAME   `"$user`"`n#define APP_MQTT_PASSWORD   `"$pass`"`n#define APP_MQTT_TOPIC      `"$topic`""
-        if ($plainBind -eq '127.0.0.1') {
-            Warn "MQTT_PLAIN_BIND=127.0.0.1: port $port is closed to the LAN, so the ESP32 cannot connect. Re-run 'scripts/setup.ps1 tls ... -KeepLanPlain'."
+        if ($Esp32Tls -and (Test-Tls) -and -not (Test-TlsCa)) {
+            Info 'ESP32: firmware/esp32-s3/main/app_config.h or the phone setup page (TLS)'
+            $espHost = Or-Default $tlsHost '<domain on the certificate>'
+            Write-Host "#define APP_MQTT_HOST       `"$espHost`"`n#define APP_MQTT_PORT       $tlsPort`n#define APP_MQTT_TLS        1`n#define APP_MQTT_USERNAME   `"$user`"`n#define APP_MQTT_PASSWORD   `"$pass`"`n#define APP_MQTT_TOPIC      `"$topic`""
+        } else {
+            Info 'ESP32: firmware/esp32-s3/main/app_config.h  (plain MQTT on the LAN)'
+            Write-Host "#define APP_MQTT_HOST       `"$ip`"`n#define APP_MQTT_PORT       $port"
+            if ($Esp32Tls) { Write-Host '#define APP_MQTT_TLS        0' }
+            Write-Host "#define APP_MQTT_USERNAME   `"$user`"`n#define APP_MQTT_PASSWORD   `"$pass`"`n#define APP_MQTT_TOPIC      `"$topic`""
+            if (Test-TlsCa) {
+                Warn 'The ESP32 only trusts public CAs, so it cannot use this self-signed certificate; keep it on plain MQTT in the LAN.'
+            } elseif (Test-Tls) {
+                Warn 'This firmware has no APP_MQTT_TLS support, so the ESP32 stays on plain MQTT in the LAN.'
+            }
+            if ($plainBind -eq '127.0.0.1') {
+                Warn "MQTT_PLAIN_BIND=127.0.0.1: port $port is closed to the LAN, so the ESP32 cannot connect. Re-run 'scripts/setup.ps1 tls ... -KeepLanPlain'."
+            }
         }
     }
 }
@@ -247,7 +263,7 @@ function New-SelfSigned([string]$hosts) {
     $sanText = $san -join ','
     $first = ($hosts -split ',')[0].Trim()
 
-    if (-not (Test-Path (Join-Path $CertDir 'ca.key'))) {
+    if (-not (Test-Path (Join-Path $CertDir 'ca.key')) -or -not (Test-Path (Join-Path $CertDir 'ca.crt'))) {
         if ((Invoke-OpenSsl @('req', '-x509', '-new', '-newkey', 'rsa:2048', '-nodes', '-keyout', 'ca.key', '-out', 'ca.crt', '-days', '3650', '-subj', '/CN=MAPS MQTT CA')) -ne 0) { Die 'Failed to create CA' }
         Info 'Created CA mosquitto/certs/ca.crt (keep ca.key private)'
     } else {
@@ -263,7 +279,8 @@ function New-SelfSigned([string]$hosts) {
 function Invoke-Tls {
     if (-not (Test-Path $EnvFile)) { Die '.env not found. Run scripts/setup.ps1 first.' }
     New-Item -ItemType Directory -Force -Path $CertDir, (Split-Path $TlsConf) | Out-Null
-    $keepPlain = if ($KeepLanPlain) { $true } elseif ($NoLanPlain) { $false } else { [bool]$HasEsp32 }
+    # The ESP32 needs plain MQTT on the LAN unless its firmware can verify this certificate.
+    $keepPlain = if ($KeepLanPlain) { $true } elseif ($NoLanPlain) { $false } else { $HasEsp32 -and ($SelfSigned -or $Ca -or -not $Esp32Tls) }
 
     if ($Disable) {
         Remove-Item $TlsConf -ErrorAction SilentlyContinue

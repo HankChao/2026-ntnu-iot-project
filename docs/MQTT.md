@@ -5,9 +5,9 @@
 ## 1. 架構
 
 ```
-ESP32 衣夾 ──MQTT 1883（區網）──┐
-                                ├─► mosquitto ◄──mqtt://mosquitto:1883── app (Bun) ── PostgreSQL
-MAPS 盒子 ──MQTT 1883 / TLS 8883─┘   (Docker 內網)
+ESP32 衣夾 ──MQTT 1883 / TLS 8883──┐
+                                   ├─► mosquitto ◄──mqtt://mosquitto:1883── app (Bun) ── PostgreSQL
+MAPS 盒子  ──MQTT 1883 / TLS 8883──┘   (Docker 內網)
 ```
 
 - broker 只有**一組帳號**：`.env` 的 `MQTT_USERNAME` / `MQTT_PASSWORD`。app、ESP32、MAPS 盒子**全部用同一組**。
@@ -74,12 +74,28 @@ docker compose up -d --build
 ```c
 #define APP_MQTT_HOST       "192.168.1.100"
 #define APP_MQTT_PORT       1883
+#define APP_MQTT_TLS        0               // 韌體有此選項時才需要
 #define APP_MQTT_USERNAME   "maps"          // = .env MQTT_USERNAME
 #define APP_MQTT_PASSWORD   "..."           // = .env MQTT_PASSWORD
 #define APP_MQTT_TOPIC      "clothes/raw"   // = .env CLOTHES_MQTT_TOPIC
 ```
 
-ESP32 韌體**只支援不加密的 MQTT**，必須和 server 在同一個區網，連 1883。
+ESP32 要用 TLS（8883），需要同時符合兩個條件：
+
+- **韌體要支援 `APP_MQTT_TLS`**：目前在 `feat/mqtt-tls` / `feat/wifi-setup-portal` branch，還沒合進 main。
+- **broker 要用有網域、由公開 CA 簽發的憑證**（例如 Let's Encrypt）：韌體用 ESP-IDF 內建的公開 CA 清單驗證憑證，也會比對主機名稱。
+
+TLS 設定方式（`APP_MQTT_HOST` 填憑證上的網域，不能填 IP）：
+
+```c
+#define APP_MQTT_HOST       "iot.example.org"
+#define APP_MQTT_PORT       8883
+#define APP_MQTT_TLS        1
+```
+
+ESP32 會先用 SNTP 校時再驗證憑證，所以 Wi-Fi 必須能連外。**自簽 CA 的憑證 ESP32 無法驗證**，用自簽時 ESP32 只能在區網連 1883。
+
+`setup` / `show` 會依韌體是否支援 TLS、目前用哪種憑證，自動印出正確的 ESP32 設定。
 
 ### MAPS 盒子（`/home/pi/maps6/maps6.yaml`，改完 `sudo systemctl restart maps6d`）
 
@@ -134,11 +150,16 @@ server 收到盒子的 `online` 或 `status` 後，才會把盒子登錄到 `dev
 
 ## 6. TLS 與 port forwarding（8883）
 
-要讓外網的 MAPS 盒子透過 router 的 port forwarding 連進來時，請開 TLS，router **只轉發 8883**。
+要讓外網的 ESP32 或 MAPS 盒子透過 router 的 port forwarding 連進來時，請開 TLS，router **只轉發 8883**。開啟後 broker 會多一個 8883 TLS listener，帳密和 1883 相同。
 
-- broker 多一個 8883 TLS listener，帳密和 1883 相同。
-- 本專案預設 `--keep-lan-plain`：1883 仍對區網開放給 ESP32 使用，只是不轉發到外網。
-- 如果不需要 ESP32，可以加 `--no-lan-plain`，讓 1883 只綁 127.0.0.1。
+1883 要不要繼續對區網開放，腳本會自動判斷：
+
+| 情況 | 預設 | ESP32 怎麼連 |
+|---|---|---|
+| 公開 CA 憑證，且韌體支援 `APP_MQTT_TLS` | 1883 只綁 127.0.0.1 | TLS 8883，填網域 |
+| 自簽 CA，或韌體不支援 TLS | 1883 保持對區網開放 | 區網 1883 |
+
+需要時可以用 `--keep-lan-plain` / `--no-lan-plain`（PowerShell：`-KeepLanPlain` / `-NoLanPlain`）手動指定。
 
 憑證有兩種選擇：
 
@@ -146,6 +167,7 @@ server 收到盒子的 `online` 或 `status` 後，才會把盒子登錄到 `dev
 |---|---|---|
 | 需要 | 網域或 DDNS 指向對外 IP | 不需要網域，可以直接用 IP |
 | 盒子設定 | `use_tls: true`、`ca_file: ""` | `use_tls: true`、`ca_file`，並把 CA 複製到每台盒子 |
+| ESP32 | 可以（`APP_MQTT_TLS 1`，填網域） | **不行**，只能用區網 1883 |
 | 續期 | 約 90 天，需要定期更新 | server 憑證 825 天、CA 10 年 |
 
 自簽 CA（`-TlsHost` / `--host` 填盒子連線時使用的對外 IP 或網域，可用逗號分隔多個）：
@@ -175,7 +197,7 @@ docker compose up -d --force-recreate mosquitto
 - `mosquitto/certs/` 和 `mosquitto/conf.d/*.conf` 都已加入 gitignore，不會被 commit。`ca.key` 請自行妥善保管。
 - 盒子的系統時間必須正確，否則 TLS 驗證會失敗。
 - 補傳（`server_url`）走的是 HTTP，不在 TLS 範圍內。如果 HTTP 也要開到外網，需要另外設定 HTTPS 反向代理。
-- 開 TLS 的同時如果還有 ESP32，router **不要**轉發 1883。
+- 無論哪種情況，router 都**不要**轉發 1883。
 
 ## 7. 換密碼
 
@@ -194,7 +216,8 @@ docker compose up -d --force-recreate mosquitto app
 | 改了 `.env` 沒有生效 | 同上：`restart` 不會重新讀取 `.env` |
 | 盒子連得上，但沒有資料 | 確認 `topic_prefix` 是 `MAPS`。用 `check --watch 30` 觀察是否有訊息 |
 | 補傳失敗 | `server_url` 要用 `WEB_PORT`（預設 8088），不能用 3000 |
-| ESP32 連不上 | broker 填的是區網 IP 而不是 localhost；2.4 GHz Wi-Fi；防火牆允許 TCP 1883；`MQTT_PLAIN_BIND` 必須是 `0.0.0.0` |
+| ESP32 連不上（1883） | broker 要填區網 IP，不能填 localhost；要用 2.4 GHz Wi-Fi；防火牆要允許 TCP 1883；`MQTT_PLAIN_BIND` 必須是 `0.0.0.0` |
+| ESP32 連不上（TLS 8883） | `APP_MQTT_HOST` 要填憑證上的網域，不能填 IP；憑證必須由公開 CA 簽發；Wi-Fi 要能連到 NTP 校時 |
 | 啟動時 port 被占用 | 修改 `.env` 的 `MQTT_PORT` / `MQTT_TLS_PORT` / `WEB_PORT` |
 | TLS 連線出現 `certificate signed by unknown authority` | 自簽 CA 時盒子沒設定 `ca_file` |
 | TLS 連線出現 `certificate is valid for ..., not ...` | 盒子的 `broker` 不在憑證的 host 清單裡，請重新簽發 |
