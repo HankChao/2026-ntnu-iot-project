@@ -30,7 +30,7 @@ python tools/smoke_maps.py
   "base_url": "https://iot.example.org",
   "local_stack": false,
   "mqtt": { "host": "iot.example.org", "port": 8883, "tls": true, "ca_file": "",
-            "username": "clothos", "password": "..." },
+            "username": "clothes", "password": "..." },
   "topics": { "clothes": "clothes/raw", "maps_prefix": "MAPS" },
   "maps_test_device": "SMOKE-TEST-01"
 }

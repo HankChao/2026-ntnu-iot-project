@@ -1,7 +1,7 @@
 // Explicit simulator. Run against a demo database; stop before collecting experiments.
 import mqtt from 'mqtt';
 const client = mqtt.connect(process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883', {
-  username: process.env.MQTT_USERNAME || 'clothos', password: process.env.MQTT_PASSWORD,
+  username: process.env.MQTT_USERNAME, password: process.env.MQTT_PASSWORD,
 });
 const topic = process.env.CLOTHES_MQTT_TOPIC || 'clothes/raw';
 const count = Number(process.env.SIM_COUNT || 60);

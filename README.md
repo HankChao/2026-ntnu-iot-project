@@ -20,7 +20,7 @@ docker compose up -d --build
 - 智慧衣夾：http://localhost:8088
 - 原有空氣盒子：http://localhost:8088/air
 - MQTT：這台電腦的區域網路 IP，預設 port 1883
-- MQTT 帳號預設 `clothos`；密碼由本機 `.env` 設定。**ESP32 與 MAPS 盒子都必須使用同一組帳密**，否則 broker 會拒絕連線。帳密流程、所有 topic 與 TLS 設定見 [docs/MQTT.md](docs/MQTT.md)。
+- MQTT 帳號、密碼都必須在 `.env` 設定（範本帳號為 `clothes`），沒設定時服務不會啟動。**ESP32 與 MAPS 盒子都必須使用同一組帳密**，否則 broker 會拒絕連線。帳密流程、所有 topic 與 TLS 設定見 [docs/MQTT.md](docs/MQTT.md)。
 - 換展示場地：修改 ESP32 的 Wi-Fi 與 broker IP，重新燒錄。電腦與 ESP32 需能互通，使用 2.4 GHz Wi-Fi；防火牆需允許 TCP 1883。ESP32 的 broker 不能填 localhost。
 
 這版沿用上游展示用認證機制，適合受信任的本機展示網路。若需要讓外網裝置透過 port forwarding 連線，可以啟用 8883 TLS（見 [docs/MQTT.md](docs/MQTT.md#6-tls-與-port-forwarding8883)）。ESP32 只能驗證公開 CA（例如 Let's Encrypt）簽發的網域憑證；用自簽憑證時，ESP32 只能留在區網連 1883。

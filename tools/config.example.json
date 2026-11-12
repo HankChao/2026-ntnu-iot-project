@@ -7,7 +7,7 @@
     "port": 1883,
     "tls": false,
     "ca_file": "",
-    "username": "clothos",
+    "username": "clothes",
     "password": ""
   },
   "topics": {
