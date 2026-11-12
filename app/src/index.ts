@@ -59,6 +59,13 @@ app.get(
 
 // Initialize Services on Startup
 async function bootstrap() {
+  // MQTT and backfill auth share these credentials; there are no built-in defaults.
+  const missing = ['MQTT_USERNAME', 'MQTT_PASSWORD'].filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    console.error(`[Config] Missing ${missing.join(', ')}: set them in .env (see docs/MQTT.md)`);
+    process.exit(1);
+  }
+
   console.log('----------------------------------------------------');
   console.log('🚀 Starting MAPS 6.0 Central Server...');
   console.log('----------------------------------------------------');

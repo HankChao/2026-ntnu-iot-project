@@ -4,7 +4,7 @@ import type { SensorData } from '../types';
 
 export const backfillRoute = new Hono();
 
-// Middleware: Authenticate device via HTTP Basic Auth (maps:raspberry) or admin token
+// Middleware: Authenticate device via HTTP Basic Auth (MQTT_USERNAME:MQTT_PASSWORD) or admin token
 async function deviceAuthMiddleware(c: any, next: any) {
   const authHeader = c.req.header('Authorization');
 
@@ -17,8 +17,11 @@ async function deviceAuthMiddleware(c: any, next: any) {
     return c.json({ success: false, error: 'Unauthorized: Basic auth required' }, 401);
   }
 
-  const expectedUser = process.env.MQTT_USERNAME || 'maps';
-  const expectedPass = process.env.MQTT_PASSWORD || 'raspberry';
+  const expectedUser = process.env.MQTT_USERNAME;
+  const expectedPass = process.env.MQTT_PASSWORD;
+  if (!expectedUser || !expectedPass) {
+    return c.json({ success: false, error: 'Server MQTT credentials are not configured' }, 500);
+  }
 
   try {
     const base64Credentials = authHeader.slice(6);

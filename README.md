@@ -10,19 +10,20 @@
 需要 Docker Desktop（啟動 Linux containers）。在 repository 根目錄執行：
 
 ```powershell
-Copy-Item .env.example .env
-# 必須編輯 .env 的 MQTT_PASSWORD，設定自己的密碼；也可調整帳號與連接埠
+# 建立 .env、產生 MQTT 密碼，並印出 ESP32 與 MAPS 盒子要填的設定（macOS/Linux: ./scripts/setup.sh）
 # .env 不會上傳 GitHub
+.\scripts\setup.ps1
 docker compose up -d --build
+.\scripts\setup.ps1 check   # 確認 MQTT 帳密正確、列出被拒絕的裝置
 ```
 
 - 智慧衣夾：http://localhost:8088
 - 原有空氣盒子：http://localhost:8088/air
 - MQTT：這台電腦的區域網路 IP，預設 port 1883
-- MQTT 帳號預設 `maps`；密碼由本機 `.env` 設定，ESP32 設定必須一致。
+- MQTT 帳號、密碼都必須在 `.env` 設定（範本帳號為 `clothes`），沒設定時服務不會啟動。**ESP32 與 MAPS 盒子都必須使用同一組帳密**，否則 broker 會拒絕連線。帳密流程、所有 topic 與 TLS 設定見 [docs/MQTT.md](docs/MQTT.md)。
 - 換展示場地：修改 ESP32 的 Wi-Fi 與 broker IP，重新燒錄。電腦與 ESP32 需能互通，使用 2.4 GHz Wi-Fi；防火牆需允許 TCP 1883。ESP32 的 broker 不能填 localhost。
 
-這版沿用上游展示用認證機制，適合受信任的本機展示網路；尚未完成公開網際網路部署所需的認證與 TLS。
+這版沿用上游展示用認證機制，適合受信任的本機展示網路。若需要讓外網裝置透過 port forwarding 連線，可以啟用 8883 TLS（見 [docs/MQTT.md](docs/MQTT.md#6-tls-與-port-forwarding8883)）。ESP32 只能驗證公開 CA（例如 Let's Encrypt）簽發的網域憑證；用自簽憑證時，ESP32 只能留在區網連 1883。
 
 ## ESP32 快速設定
 
@@ -73,10 +74,11 @@ docker compose exec -T -e SIM_COUNT=60 app bun scripts/publish-clothes.ts
 
 ```powershell
 docker compose exec -T app bun test
-python tools/smoke_clothes.py
+python tools/smoke_clothes.py   # clothes/raw
+python tools/smoke_maps.py      # MAPS/<id>/online、status、sensor
 ```
 
-smoke 測試會寫測試讀值、重啟本專案 app，驗證 MQTT、DB、API、重啟保存及斷線提示。請在沒有真實 ESP32 發送的展示環境執行。測試資料會保留。
+smoke 測試會寫測試讀值，驗證 MQTT、DB、API；clothes 測試另外會重啟本專案 app，檢查重啟後資料仍保存，以及斷線提示。請在沒有真實裝置發送的展示環境執行，測試資料會保留。執行前先把 `tools/config.example.json` 複製成 `tools/config.json`，填入網址與帳密（不會讀 `.env`），見 [tools/README.md](tools/README.md)。
 
 ## 專案結構
 
