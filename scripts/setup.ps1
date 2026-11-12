@@ -99,11 +99,16 @@ function Get-LanIp {
 
 function Or-Default([string]$v, [string]$d) { if ($v) { $v } else { $d } }
 
+function Get-DefaultUser {
+    $line = if (Test-Path $EnvExample) { Get-Content -LiteralPath $EnvExample | Where-Object { $_ -like 'MQTT_USERNAME=*' } | Select-Object -Last 1 }
+    if ($line -and $line.Length -gt 'MQTT_USERNAME='.Length) { $line.Substring('MQTT_USERNAME='.Length) } else { 'maps' }
+}
+
 # ------------------------------------------------------------ passwd (server)
 function Write-PasswdFile {
     if ($PasswdMode -ne 'file') { return }
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { Die 'docker is required to generate mosquitto/passwd' }
-    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') 'maps'
+    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') (Get-DefaultUser)
     $env:MQTT_U = $user
     $env:MQTT_P = Get-EnvValue 'MQTT_PASSWORD'
     try {
@@ -187,7 +192,7 @@ function Test-TlsCa { (Test-Tls) -and [bool](Select-String -LiteralPath $TlsConf
 
 function Invoke-Show {
     if (-not (Test-Path $EnvFile)) { Die '.env not found. Run scripts/setup.ps1 first.' }
-    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') 'maps'
+    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') (Get-DefaultUser)
     $pass = Get-EnvValue 'MQTT_PASSWORD'
     $port = Or-Default (Get-EnvValue 'MQTT_PORT') '1883'
     $tlsPort = Or-Default (Get-EnvValue 'MQTT_TLS_PORT') '8883'
@@ -337,7 +342,7 @@ function Invoke-MosquittoSub([string]$shCmd, [string]$user, [string]$pass, [swit
 
 function Invoke-Check {
     if (-not (Test-Path $EnvFile)) { Die '.env not found. Run scripts/setup.ps1 first.' }
-    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') 'maps'
+    $user = Or-Default (Get-EnvValue 'MQTT_USERNAME') (Get-DefaultUser)
     $pass = Get-EnvValue 'MQTT_PASSWORD'
     $ok = $true
 

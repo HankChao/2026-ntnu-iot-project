@@ -17,7 +17,7 @@ async function deviceAuthMiddleware(c: any, next: any) {
     return c.json({ success: false, error: 'Unauthorized: Basic auth required' }, 401);
   }
 
-  const expectedUser = process.env.MQTT_USERNAME || 'maps';
+  const expectedUser = process.env.MQTT_USERNAME || 'clothos';
   const expectedPass = process.env.MQTT_PASSWORD || 'raspberry';
 
   try {

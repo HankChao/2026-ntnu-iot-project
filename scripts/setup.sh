@@ -89,12 +89,18 @@ lan_ip() {
 
 compose() { docker compose "$@"; }
 
+default_user() {
+  local u
+  u="$({ grep -E '^MQTT_USERNAME=' "$ENV_EXAMPLE" 2>/dev/null || true; } | tail -n 1 | cut -d= -f2-)"
+  echo "${u:-maps}"
+}
+
 # ------------------------------------------------------------ passwd (server)
 write_passwd_file() {
   [ "$PASSWD_MODE" = "file" ] || return 0
   command -v docker >/dev/null 2>&1 || die "docker is required to generate mosquitto/passwd"
   local user pass tmp
-  user="$(env_get MQTT_USERNAME)"; user="${user:-maps}"
+  user="$(env_get MQTT_USERNAME)"; user="${user:-$(default_user)}"
   pass="$(env_get MQTT_PASSWORD)"
   tmp="$(mktemp)"
   MQTT_U="$user" MQTT_P="$pass" docker run --rm -e MQTT_U -e MQTT_P --entrypoint sh "$MOSQUITTO_IMAGE" -c \
@@ -198,7 +204,7 @@ tls_has_ca() { tls_enabled && grep -q '^cafile' "$TLS_CONF"; }
 cmd_show() {
   [ -f "$ENV_FILE" ] || die ".env not found. Run scripts/setup.sh first."
   local user pass port tls_port web_port ip plain_bind tls_host topic
-  user="$(env_get MQTT_USERNAME)"; user="${user:-maps}"
+  user="$(env_get MQTT_USERNAME)"; user="${user:-$(default_user)}"
   pass="$(env_get MQTT_PASSWORD)"
   port="$(env_get MQTT_PORT)"; port="${port:-1883}"
   tls_port="$(env_get MQTT_TLS_PORT)"; tls_port="${tls_port:-8883}"
@@ -404,7 +410,7 @@ cmd_check() {
   done
   [ -f "$ENV_FILE" ] || die ".env not found. Run scripts/setup.sh first."
   local user pass ok=1
-  user="$(env_get MQTT_USERNAME)"; user="${user:-maps}"
+  user="$(env_get MQTT_USERNAME)"; user="${user:-$(default_user)}"
   pass="$(env_get MQTT_PASSWORD)"
 
   compose ps --status running --services 2>/dev/null | grep -qx mosquitto \

@@ -75,7 +75,7 @@ docker compose up -d --build
 #define APP_MQTT_HOST       "192.168.1.100"
 #define APP_MQTT_PORT       1883
 #define APP_MQTT_TLS        0               // 韌體有此選項時才需要
-#define APP_MQTT_USERNAME   "maps"          // = .env MQTT_USERNAME
+#define APP_MQTT_USERNAME   "clothos"          // = .env MQTT_USERNAME
 #define APP_MQTT_PASSWORD   "..."           // = .env MQTT_PASSWORD
 #define APP_MQTT_TOPIC      "clothes/raw"   // = .env CLOTHES_MQTT_TOPIC
 ```
@@ -104,7 +104,7 @@ upload:
   mqtt:
     broker: "192.168.1.100"
     port: 1883                  # TLS 時為 8883
-    username: "maps"            # = .env MQTT_USERNAME
+    username: "clothos"         # = .env MQTT_USERNAME
     password: "..."             # = .env MQTT_PASSWORD
     topic_prefix: "MAPS"        # server 只訂閱 MAPS/...，不要改
     use_tls: false

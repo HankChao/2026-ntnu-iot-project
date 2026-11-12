@@ -9,7 +9,7 @@ services:
       # TLS MQTT, only active after scripts/setup.sh tls.
       - "${MQTT_TLS_PORT:-8883}:8883"
     environment:
-      MQTT_USERNAME: ${MQTT_USERNAME:-maps}
+      MQTT_USERNAME: ${MQTT_USERNAME:-clothos}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
     entrypoint: ["/bin/sh", "/mosquitto/config/start.sh"]
     volumes:
@@ -48,7 +48,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://maps6:maps6_secret@postgres:5432/maps6}
       MQTT_BROKER_URL: ${MQTT_BROKER_URL:-mqtt://mosquitto:1883}
-      MQTT_USERNAME: ${MQTT_USERNAME:-maps}
+      MQTT_USERNAME: ${MQTT_USERNAME:-clothos}
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
       CLOTHES_MQTT_TOPIC: ${CLOTHES_MQTT_TOPIC:-clothes/raw}
       SESSION_SECRET: ${SESSION_SECRET:-maps6_super_secret_session_key}
