@@ -1,7 +1,7 @@
 <template>
   <div class="main-container">
     <div class="header-nav">
-      <router-link to="/" class="back-link">← 返回即時儀表板</router-link>
+      <router-link to="/devices" class="back-link">← 設備狀況</router-link>
       <div class="header-nav-right">
         <router-link :to="`/history?id=${deviceId}`" class="btn btn-primary btn-sm">
           查看歷史時序圖表 →
@@ -399,7 +399,7 @@
                   <span class="metric-box-label">系統連續運轉</span>
                 </div>
                 <div class="metric-box-val-row">
-                  <span class="metric-box-val font-mono" style="font-size: 16px;">
+                  <span class="metric-box-val font-mono" style="font-size: 1rem;">
                     {{ formatUptime(device.uptime_sec) }}
                   </span>
                 </div>
@@ -743,7 +743,7 @@ onUnmounted(() => {
 }
 
 .back-link {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--color-body);
   text-decoration: none;
 }
@@ -782,7 +782,7 @@ onUnmounted(() => {
 }
 
 .device-name {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
   letter-spacing: -0.5px;
 }
@@ -791,7 +791,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   opacity: 0.6;
 }
 
@@ -807,7 +807,7 @@ onUnmounted(() => {
 
 .name-input {
   padding: 4px 8px;
-  font-size: 16px;
+  font-size: 1rem;
   border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   width: 200px;
@@ -820,13 +820,13 @@ onUnmounted(() => {
 }
 
 .device-mac {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-muted);
 }
 
 .device-app-ver,
 .device-mcu-ver {
-  font-size: 11px;
+  font-size: 0.6875rem;
   background: var(--color-canvas-subtle, #f1f5f9);
   padding: 2px 6px;
   border-radius: 4px;
@@ -855,13 +855,13 @@ onUnmounted(() => {
 }
 
 .spec-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-muted);
   font-weight: 500;
 }
 
 .spec-val {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-ink);
 }
@@ -873,7 +873,7 @@ onUnmounted(() => {
 }
 
 .mod-chip {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-family: var(--font-mono);
   background: var(--color-canvas-subtle, #f1f5f9);
   padding: 1px 6px;
@@ -894,13 +894,13 @@ onUnmounted(() => {
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.3px;
 }
 
 .section-desc {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-body);
   margin-top: 2px;
 }
@@ -909,7 +909,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-body);
   background: var(--color-canvas);
   border: 1px solid var(--color-hairline-strong);
@@ -949,13 +949,13 @@ onUnmounted(() => {
 }
 
 .group-title {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--color-ink);
 }
 
 .group-chip {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-family: var(--font-mono);
   background: var(--color-canvas-subtle, #f1f5f9);
   padding: 2px 8px;
@@ -994,7 +994,7 @@ onUnmounted(() => {
 }
 
 .metric-box.highlight {
-  background: #ffffff;
+  background: var(--sf);
   border-color: var(--color-hairline-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
@@ -1006,7 +1006,7 @@ onUnmounted(() => {
 }
 
 .metric-box-label {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-body);
   font-weight: 500;
 }
@@ -1018,13 +1018,13 @@ onUnmounted(() => {
 }
 
 .metric-box-val {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 700;
   color: var(--color-ink);
 }
 
 .metric-box-unit {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-muted);
 }
 
@@ -1065,7 +1065,7 @@ onUnmounted(() => {
 
 .field-label {
   display: block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   margin-bottom: 8px;
 }
@@ -1084,7 +1084,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   cursor: pointer;
 }
 
@@ -1097,27 +1097,27 @@ onUnmounted(() => {
 
 .save-msg {
   color: var(--color-success);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
 }
 
 .action-banner {
   padding: 8px 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   margin-bottom: 12px;
 }
 
 .action-banner.success {
-  background: #f0fdf4;
-  color: #166534;
-  border: 1px solid #bbf7d0;
+  background: var(--ok-soft);
+  color: var(--ok-tx);
+  border: 1px solid var(--ok-bd);
 }
 
 .action-banner.error {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+  background: var(--err-soft);
+  color: var(--err-tx);
+  border: 1px solid var(--err-bd);
 }
 
 .action-buttons {
@@ -1128,11 +1128,11 @@ onUnmounted(() => {
 
 .btn-danger {
   color: var(--color-danger, #e11d48);
-  border-color: #fecdd3;
+  border-color: var(--err-bd);
 }
 
 .btn-danger:hover {
-  background: #ffe4e6;
+  background: var(--err-soft);
 }
 
 .coverage-header {
@@ -1143,7 +1143,7 @@ onUnmounted(() => {
 }
 
 .coverage-count {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-muted);
   font-family: var(--font-mono);
 }
@@ -1161,7 +1161,7 @@ onUnmounted(() => {
   border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   padding: 3px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-family: var(--font-mono);
   color: var(--color-ink);
   text-decoration: none;
@@ -1170,12 +1170,12 @@ onUnmounted(() => {
 
 .date-tag-link:hover {
   background: var(--color-primary, #2563eb);
-  color: #ffffff;
+  color: var(--color-on-primary);
   border-color: var(--color-primary, #2563eb);
 }
 
 .no-dates-hint {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-muted);
 }
 
@@ -1185,12 +1185,12 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .btn-xs {
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .btn-subtle {

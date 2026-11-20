@@ -62,13 +62,14 @@ const props = withDefaults(
 
 const chartRef = ref<any>(null);
 
-// White background plugin for clean PNG exports
+// Surface-colored background so PNG exports match what is on screen (light or dark theme)
+const surfaceColor = () => getComputedStyle(document.documentElement).getPropertyValue('--sf').trim() || '#ffffff';
 const customCanvasBackgroundPlugin = {
   id: 'customCanvasBackground',
   beforeDraw: (chart: any) => {
     const { ctx, width, height } = chart;
     ctx.save();
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = surfaceColor();
     ctx.fillRect(0, 0, width, height);
     ctx.restore();
   },
@@ -323,7 +324,6 @@ const computedChartOptions = computed<ChartOptions<'line'>>(() => {
         },
       },
       tooltip: {
-        backgroundColor: '#171717',
         titleFont: { family: "'JetBrains Mono', monospace", size: 12 },
         bodyFont: { family: "'JetBrains Mono', monospace", size: 12 },
         padding: 10,
@@ -363,7 +363,7 @@ function exportImage(filename: string = 'maps6_sensor_chart.png') {
   const ctx = offscreen.getContext('2d');
   if (!ctx) return;
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = surfaceColor();
   ctx.fillRect(0, 0, offscreen.width, offscreen.height);
   ctx.drawImage(srcCanvas, 0, 0);
 
@@ -400,7 +400,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--color-canvas-subtle, #f9fafb);
   border-radius: 8px;
   border: 1px dashed var(--color-hairline-strong);

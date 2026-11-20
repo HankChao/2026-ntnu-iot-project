@@ -108,12 +108,12 @@ function onNumberChange(e: Event) {
   border: 1px solid var(--color-hairline-strong);
   border-radius: 6px;
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: right;
 }
 
 .unit {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-body);
 }
 
@@ -127,7 +127,7 @@ function onNumberChange(e: Event) {
   border: 1px solid var(--color-hairline-strong);
   background: var(--color-canvas);
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-family: var(--font-mono);
   color: var(--color-body);
   cursor: pointer;
@@ -141,7 +141,7 @@ function onNumberChange(e: Event) {
 
 .preset-btn.active {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--color-on-primary);
   border-color: var(--color-primary);
 }
 </style>

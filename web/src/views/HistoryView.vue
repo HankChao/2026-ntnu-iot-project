@@ -543,13 +543,13 @@ onMounted(() => {
 }
 
 .page-title {
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 700;
   letter-spacing: -0.5px;
 }
 
 .page-desc {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-body);
   margin-top: 4px;
 }
@@ -574,7 +574,7 @@ onMounted(() => {
 }
 
 .label {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--color-body);
 }
@@ -585,7 +585,7 @@ onMounted(() => {
   border: 1px solid var(--color-hairline-strong);
   border-radius: 6px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   background: var(--color-canvas);
 }
 
@@ -600,12 +600,12 @@ onMounted(() => {
   flex-wrap: wrap;
   padding-top: 12px;
   border-top: 1px dashed var(--color-hairline);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .preset-label {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 
@@ -626,7 +626,7 @@ onMounted(() => {
   border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-family: var(--font-mono);
   cursor: pointer;
   color: var(--color-ink);
@@ -640,12 +640,12 @@ onMounted(() => {
 
 .chip-date.active {
   background: var(--color-primary, #2563eb);
-  color: #ffffff;
+  color: var(--color-on-primary);
   border-color: var(--color-primary, #2563eb);
 }
 
 .more-dates-hint {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-muted);
 }
 
@@ -664,13 +664,13 @@ onMounted(() => {
 }
 
 .control-title {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
 }
 
 .selected-count-badge {
   margin-left: 8px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   background: var(--color-canvas-subtle, #f1f5f9);
   padding: 2px 8px;
   border-radius: 10px;
@@ -705,7 +705,7 @@ onMounted(() => {
 }
 
 .group-row-title {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--color-ink);
 }
@@ -720,19 +720,19 @@ onMounted(() => {
   background: none;
   border: none;
   padding: 0;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-primary, #2563eb);
   cursor: pointer;
   text-decoration: underline;
 }
 
 .btn-link-action:hover {
-  color: #1d4ed8;
+  color: var(--ac-tx);
 }
 
 .sep-dot {
   color: var(--color-muted);
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .metric-chips-wrap {
@@ -749,7 +749,7 @@ onMounted(() => {
   border-radius: 16px;
   border: 1px solid var(--color-hairline-strong);
   background: var(--color-canvas);
-  font-size: 12px;
+  font-size: 0.75rem;
   cursor: pointer;
   user-select: none;
   transition: all 0.15s;
@@ -760,7 +760,7 @@ onMounted(() => {
 }
 
 .metric-chip.active {
-  background: #ffffff;
+  background: var(--sf);
   border-color: var(--color-ink);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   font-weight: 600;
@@ -787,7 +787,7 @@ onMounted(() => {
 }
 
 .ranges-title {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-muted);
   font-weight: 500;
 }
@@ -802,21 +802,21 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: #ffffff;
+  background: var(--sf);
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--color-hairline);
 }
 
 .range-metric-name {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
 }
 
 .range-input {
   width: 60px;
   padding: 3px 6px;
-  font-size: 12px;
+  font-size: 0.75rem;
   border: 1px solid var(--color-hairline-strong);
   border-radius: 4px;
   text-align: center;
@@ -846,7 +846,7 @@ onMounted(() => {
 }
 
 .stat-name {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-body);
   font-weight: 500;
 }
@@ -859,20 +859,20 @@ onMounted(() => {
 }
 
 .stat-curr {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 700;
   font-family: var(--font-mono);
 }
 
 .stat-unit {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-muted);
 }
 
 .stat-minmax {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--color-muted);
   font-family: var(--font-mono);
   border-top: 1px dashed var(--color-hairline);
@@ -898,7 +898,7 @@ onMounted(() => {
 
 .chart-title {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .chart-device-tag,
@@ -906,18 +906,18 @@ onMounted(() => {
   background: var(--color-hairline);
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-body);
 }
 
 .chart-count {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-muted);
 }
 
 .btn-xs {
   padding: 2px 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .btn-subtle {
