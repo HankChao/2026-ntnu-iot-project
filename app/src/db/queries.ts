@@ -187,6 +187,17 @@ export async function getDevice(deviceId: string): Promise<Device | null> {
   return rows[0] || null;
 }
 
+// Another air box already using this name (case and surrounding spaces ignored)?
+export async function deviceNameTaken(deviceId: string, displayName: string): Promise<boolean> {
+  if (!dbClient.isConnected()) {
+    const name = displayName.trim().toLowerCase();
+    return [...memoryDevices.values()].some((d: any) => d.device_id !== deviceId && (d.display_name ?? '').trim().toLowerCase() === name);
+  }
+  const rows = await dbClient.sql`
+    SELECT 1 FROM devices WHERE lower(btrim(display_name)) = lower(btrim(${displayName})) AND device_id <> ${deviceId}`;
+  return rows.length > 0;
+}
+
 export async function updateDeviceName(deviceId: string, displayName: string): Promise<boolean> {
   if (!dbClient.isConnected()) {
     const dev = memoryDevices.get(deviceId);

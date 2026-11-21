@@ -26,7 +26,7 @@
             <p class="muted">只列出目前沒有在用的衣夾，離線的衣夾無法使用。</p>
             <button v-for="o in clipOptions" :key="o.device.id" type="button" class="option" :class="{ on: clipId === o.device.id }"
               :disabled="!o.status.online" :aria-pressed="clipId === o.device.id" @click="clipId = o.device.id">
-              <span class="option-text"><b>{{ o.device.name }}</b><small>{{ o.meta }}</small></span>
+              <span class="option-text"><b>{{ o.device.name }} <DemoTag v-if="o.device.demo" /></b><small>{{ o.meta }}</small></span>
               <span class="status" :class="o.status.online ? 'status--on' : 'status--off'"><i></i>{{ o.status.online ? '在線' : '離線' }}</span>
             </button>
             <p v-if="!clipOptions.length" class="muted">所有衣夾都在使用中，先到總覽結束一次晾衣。</p>
@@ -44,16 +44,17 @@
                 <button v-for="g in library" :key="g.id" type="button" class="option" :class="{ on: garmentId === g.id }"
                   :disabled="g.busy" :aria-pressed="garmentId === g.id" @click="garmentId = g.id">
                   <i class="swatch" :style="{ background: g.color }"></i>
-                  <span class="option-text"><b>{{ g.name }}</b><small>{{ g.meta }}</small></span>
+                  <span class="option-text"><b>{{ g.name }} <DemoTag v-if="g.demo" /></b><small>{{ g.meta }}</small></span>
                   <span class="tag">{{ g.busy ? '晾衣中' : '' }}</span>
                 </button>
-                <p v-if="!library.length" class="muted">{{ mock.state.garments.length ? '找不到符合的衣物' : '還沒有衣物，請先新增一件' }}</p>
+                <p v-if="!library.length" class="muted">{{ sameKind.length ? '找不到符合的衣物' : '還沒有衣物，請先新增一件' }}</p>
               </div>
               <button type="button" class="ui-btn ui-btn--lg ui-btn--dashed" @click="creating = true">＋ 新增一件衣物</button>
             </template>
             <template v-else>
               <GarmentForm v-model="draft" id-prefix="new-garment" placeholder="例如：白色班服" />
-              <p v-if="mock.demoEnabled.value" class="ui-note ui-note--info">第一次晾的衣物還不知道乾燥時間，會先用材質估算，預測可能較不準；收衣後會自動記住。</p>
+              <p v-if="draftTaken" class="ui-note ui-note--error" role="alert">已經有名為「{{ draft.name.trim() }}」的衣物，請換一個名稱，或改選晾過的衣物。</p>
+              <p class="ui-note ui-note--info">第一次晾的衣物還不知道乾燥時間，會先用材質估算，預測可能較不準；收衣後會自動記住。</p>
               <button type="button" class="ui-btn ui-btn--ghost start" @click="creating = false">← 改選晾過的衣物</button>
             </template>
           </div>
@@ -64,7 +65,7 @@
             <dl class="summary">
               <div><dt>衣夾</dt><dd>{{ clip?.name }}</dd></div>
               <div><dt>衣物</dt><dd>{{ chosen?.name }}</dd></div>
-              <div><dt>預計乾燥</dt><dd>{{ clip?.live ? 'NONE' : `約 ${minutesText(predicted)}` }}</dd></div>
+              <div><dt>預計乾燥</dt><dd>約 {{ minutesText(predicted) }}</dd></div>
             </dl>
             <div class="ui-field">
               <label for="start-airbox">室內環境來自</label>
@@ -75,21 +76,23 @@
           <div class="actions">
             <button v-if="step > 1" type="button" class="ui-btn ui-btn--lg" @click="step--">上一步</button>
             <button v-if="step < 3" type="button" class="ui-btn ui-btn--primary ui-btn--lg push" :disabled="!canNext" @click="step++">下一步</button>
-            <button v-else type="button" class="ui-btn ui-btn--primary ui-btn--lg push" @click="start">開始晾衣</button>
+            <button v-else type="button" class="ui-btn ui-btn--primary ui-btn--lg push" :disabled="starting" @click="start">{{ starting ? '正在開始…' : '開始晾衣' }}</button>
           </div>
+          <p v-if="mock.actionError.value" class="ui-note ui-note--error" role="alert">{{ mock.actionError.value }}</p>
         </div>
       </div>
-      <p v-if="mock.demoEnabled.value" class="demo-note">示範資料：衣物庫與晾衣紀錄目前存在這台瀏覽器；空氣盒子清單為實際資料。可在設定關閉示範資料。</p>
-      <p v-else class="demo-note">示範資料已關閉。衣物與晾衣紀錄目前存在這台瀏覽器；空氣盒子清單為實際資料。衣夾-01 的乾燥預測尚未實作。</p>
+      <p v-if="mock.demoEnabled.value" class="demo-note">衣物與晾衣紀錄存在伺服器。標了「示範」的衣夾與衣物是示範資料，只能互相搭配；衣夾-01 是實際的衣夾，只能選實際的衣物。可在設定關閉示範資料。</p>
+      <p v-else class="demo-note">衣物與晾衣紀錄存在伺服器。預計乾燥時間依這件衣物過去的乾燥時間估算，第一次晾的衣物用材質預設值。</p>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import GarmentFigure from '../components/clothes/GarmentFigure.vue';
 import GarmentForm from '../components/clothes/GarmentForm.vue';
+import DemoTag from '../components/clothes/DemoTag.vue';
 import { SHAPES } from '../constants/garments';
 import { useTheme } from '../composables/useTheme';
 import AirboxSelect from '../components/clothes/AirboxSelect.vue';
@@ -121,9 +124,12 @@ const clipOptions = computed(() => mock.devices.value
   .sort((a, b) => Number(b.status.online) - Number(a.status.online)));
 const clip = computed(() => clipId.value ? mock.clipById(clipId.value) : undefined);
 
+// A real clip only takes real garments and a demo clip only demo ones (the server enforces it too).
+const sameKind = computed(() => mock.state.garments.filter((g) => g.demo === (clip.value?.demo ?? false)));
+watch(clipId, () => { if (garmentId.value && !sameKind.value.some((g) => g.id === garmentId.value)) garmentId.value = null; });
 const library = computed(() => {
   const q = query.value.trim();
-  return mock.state.garments
+  return sameKind.value
     .filter((g) => !q || g.name.includes(q) || g.material.includes(q))
     .map((g) => {
       const count = mock.dryCount(g.id);
@@ -145,15 +151,21 @@ const caption = computed(() => {
   return `${c}${chosen.value.name} · ${chosen.value.material} ${SHAPES[chosen.value.style].label}`;
 });
 
+// A new garment needs a name that no garment of the same kind (real or demo) already has.
+const draftTaken = computed(() => creating.value && mock.garmentNameTaken(draft.value.name, clip.value?.demo ?? false));
 const canNext = computed(() => (step.value === 1 && !!clip.value)
-  || (step.value === 2 && (creating.value ? draft.value.name.trim().length > 0 : !!garmentId.value)));
+  || (step.value === 2 && (creating.value ? draft.value.name.trim().length > 0 && !draftTaken.value : !!garmentId.value)));
 
-function start() {
-  if (!clipId.value) return;
+// Goes to the overview only once the server has stored the session; otherwise the error shows here.
+const starting = ref(false);
+async function start() {
+  if (!clipId.value || starting.value) return;
   const target = creating.value ? { ...draft.value, name: draft.value.name.trim() } : garmentId.value ? { id: garmentId.value } : null;
   if (!target) return;
-  mock.startSession(clipId.value, target);
-  void router.push('/');
+  starting.value = true;
+  const session = await mock.startSession(clipId.value, target);
+  starting.value = false;
+  if (session) void router.push('/');
 }
 </script>
 

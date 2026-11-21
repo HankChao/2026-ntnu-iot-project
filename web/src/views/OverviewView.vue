@@ -6,6 +6,7 @@
           <h1>{{ items.length ? `晾衣中 · ${items.length} 件` : '今天的晾衣狀況' }}</h1>
           <router-link v-if="items.length" to="/start" class="ui-btn ui-btn--primary">開始新一次晾衣</router-link>
         </div>
+        <p v-if="mock.actionError.value || mock.loadError.value" class="ui-note ui-note--error" role="alert">{{ mock.actionError.value || mock.loadError.value }}</p>
 
         <!-- ===== someone is drying ===== -->
         <div v-if="items.length && cur" class="stage">
@@ -33,7 +34,7 @@
             <!-- view -->
             <div v-if="panel === 'view'" class="view">
               <div class="view-top">
-                <span class="meta"><i :style="{ background: cur.garment.color }"></i><span class="ellipsis">{{ cur.garment.material }} · {{ SHAPES[cur.garment.style].label }} · {{ cur.clip.name }}</span></span>
+                <span class="meta"><i :style="{ background: cur.garment.color }"></i><DemoTag v-if="cur.session.demo" /><span class="ellipsis">{{ cur.garment.material }} · {{ SHAPES[cur.garment.style].label }} · {{ cur.clip.name }}</span></span>
                 <div class="btns">
                   <router-link :to="`/clips/${cur.clip.id}`" class="ui-btn">衣夾詳細</router-link>
                   <button type="button" class="ui-btn" @click="startEdit">編輯衣物</button>
@@ -89,9 +90,9 @@
                 <button type="button" class="ui-btn" @click="panel = 'swap'">更換衣物</button>
               </div>
               <GarmentForm v-model="draft" id-prefix="ov-garment" placeholder="例如：白色班服" />
-              <p class="edit-note wa-tx">{{ predictChanged ? '樣式或材質變更後，會重新計算這次的乾燥預測' : '' }}</p>
+              <p class="edit-note wa-tx">{{ draftTaken ? `已經有名為「${draft.name.trim()}」的衣物，請換一個名稱` : predictChanged ? '樣式或材質變更後，會重新計算這次的乾燥預測' : '' }}</p>
               <div class="btns">
-                <button type="button" class="ui-btn ui-btn--primary ui-btn--lg" :disabled="!dirty || !draft.name.trim()" @click="save">儲存</button>
+                <button type="button" class="ui-btn ui-btn--primary ui-btn--lg" :disabled="!dirty || !draft.name.trim() || draftTaken" @click="save">儲存</button>
                 <button type="button" class="ui-btn ui-btn--lg" :disabled="!dirty" @click="revert">復原</button>
                 <button type="button" class="ui-btn ui-btn--ghost push" @click="closePanel">取消</button>
               </div>
@@ -118,7 +119,7 @@
               <h2>更換衣物</h2>
               <p class="muted-2">這次晾的不是「{{ cur.garment.name }}」？選擇正確的衣物。開始時間和感測資料會保留，預測會依新衣物重新計算，兩件衣物的設定都不會被改動。</p>
               <div class="library">
-                <button v-for="g in mock.state.garments" :key="g.id" type="button" class="lib-item"
+                <button v-for="g in swapChoices" :key="g.id" type="button" class="lib-item"
                   :class="{ on: g.id === cur.garment.id }" :disabled="g.id !== cur.garment.id && busyGarmentIds.has(g.id)"
                   :aria-pressed="g.id === cur.garment.id" @click="swapTo(g.id)">
                   <i :style="{ background: g.color }"></i>
@@ -194,7 +195,7 @@
           <DryingCurve :started-at="cur.session.startedAt" :now="mock.now.value" :moist-now="cur.moist" :dry-time="cur.dryTime" />
         </div>
         <div v-else class="no-curve">
-          <p>{{ cur.clip.name }} 的剩餘水分與乾燥預測尚未實作，目前沒有乾燥曲線。三個感測器的原始值曲線可以到衣夾詳細查看。</p>
+          <p>{{ cur.clip.name }} 的剩餘水分尚未實作，目前沒有乾燥曲線；預計乾燥時間是依這件衣物過去的乾燥時間（沒有紀錄時用材質）估算。三個感測器的原始值曲線可以到衣夾詳細查看。</p>
           <router-link :to="`/clips/${cur.clip.id}`" class="ui-btn">查看原始值曲線</router-link>
         </div>
       </section>
@@ -203,7 +204,7 @@
         <section v-if="items.length" class="panel grow">
           <div class="row-head"><h2>晾衣中</h2><router-link to="/devices" class="ac-tx">全部設備</router-link></div>
           <button v-for="(item, i) in items" :key="item.session.id" type="button" class="drying-row" @click="go(i); scrollTop()">
-            <span class="drying-top"><span>{{ item.garment.name }} <small class="muted">{{ item.clip.name }}</small></span>
+            <span class="drying-top"><span>{{ item.garment.name }} <small class="muted">{{ item.clip.name }}</small> <DemoTag v-if="item.session.demo" /></span>
               <span :class="item.clip.issue ? 'wa-tx' : 'ac-tx'">{{ item.clip.issue ? '重量感測異常' : item.dryText }}</span></span>
             <span class="ui-bar"><span :style="{ width: item.moist == null ? '0%' : `${100 - item.moist}%`, background: item.clip.issue ? 'var(--wa)' : undefined }"></span></span>
           </button>
@@ -211,7 +212,7 @@
         <section class="panel grow">
           <div class="row-head"><h2>上次晾衣</h2><router-link to="/sessions" class="ac-tx">全部紀錄</router-link></div>
           <div v-if="lastRecord" class="last">
-            <div class="last-top"><span>{{ lastRecord.name }}</span><span>{{ lastRecord.duration }}</span></div>
+            <div class="last-top"><span>{{ lastRecord.name }} <DemoTag v-if="lastRecord.demo" /></span><span>{{ lastRecord.duration }}</span></div>
             <span class="muted">{{ lastRecord.when }}</span>
           </div>
           <p v-else class="muted">還沒有晾衣紀錄</p>
@@ -219,8 +220,8 @@
         </section>
       </div>
 
-      <p v-if="mock.demoEnabled.value" class="demo-note">示範資料：衣物、晾衣紀錄、衣夾-02～05 的剩餘水分與乾燥預測、戶外天氣目前為前端模擬；空氣盒子溫濕度為實際資料。衣夾-01 的剩餘水分與乾燥預測尚未實作，原始感測值請到衣夾詳細查看。可在設定關閉示範資料。</p>
-      <p v-else class="demo-note">示範資料已關閉。衣物與晾衣紀錄目前存在這台瀏覽器；空氣盒子溫濕度為實際資料。剩餘水分、乾燥預測與戶外天氣尚未實作。</p>
+      <p v-if="mock.demoEnabled.value" class="demo-note">標了「示範」的衣物與晾衣是示範資料，剩餘水分與乾燥曲線為模擬；戶外天氣也是示範資料。衣夾-01 的晾衣、衣物與紀錄是實際資料，存在伺服器；它的預計乾燥時間依這件衣物過去的乾燥時間估算，剩餘水分尚未實作。空氣盒子溫濕度為實際資料。可在設定關閉示範資料。</p>
+      <p v-else class="demo-note">衣物與晾衣紀錄存在伺服器；預計乾燥時間依這件衣物過去的乾燥時間估算（第一次晾用材質預設值）。空氣盒子溫濕度為實際資料。剩餘水分與戶外天氣尚未實作。</p>
     </div>
   </div>
 </template>
@@ -230,6 +231,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import GarmentFigure from '../components/clothes/GarmentFigure.vue';
 import GarmentForm from '../components/clothes/GarmentForm.vue';
 import DryingCurve from '../components/clothes/DryingCurve.vue';
+import DemoTag from '../components/clothes/DemoTag.vue';
 import AirboxSelect from '../components/clothes/AirboxSelect.vue';
 import { BASE_MINUTES, SHAPES, colorName, type Material } from '../constants/garments';
 import { useTheme } from '../composables/useTheme';
@@ -248,17 +250,18 @@ const items = computed(() => mock.state.sessions.flatMap((session) => {
   const clip = clipById(session.clipId);
   if (!garment || !clip) return [];
   const t = mock.now.value;
-  // Demo prediction for every clip; a real per-garment prediction is not implemented yet.
-  // The real clip shows its real sensor readings; moisture and prediction are not implemented
-  // yet, so they stay empty instead of using demo numbers. The other clips are demo data.
-  const moist = clip.live ? null : moistureAt(session, t);
-  const dryTime = clip.live ? null : dryAt(session);
-  const done = moist != null && (moist <= 5 || (dryTime != null && dryTime <= t));
+  // Every session has a predicted drying time from the server (this garment's average, or the
+  // material default). Remaining moisture is only simulated for demo sessions; the real clip has
+  // no moisture estimate yet, so it shows NONE instead of a demo number.
+  const moist = session.demo ? moistureAt(session, t) : null;
+  const dryTime = dryAt(session);
+  const done = moist != null && (moist <= 5 || dryTime <= t);
+  // Without a moisture reading the real clip cannot tell it is dry; past the estimate it only says so.
+  const overdue = moist == null && dryTime <= t;
   return [{
     session, garment, clip, moist, dryTime,
-    // NONE keeps the same size and place as a predicted time until prediction is implemented.
-    dryText: done ? '已乾' : dryTime ? clock(dryTime) : 'NONE',
-    leftText: done ? '可以收了' : dryTime ? `還要約 ${minutesText((dryTime - t) / MIN)}` : '',
+    dryText: done ? '已乾' : clock(dryTime),
+    leftText: done ? '可以收了' : overdue ? '已超過預計時間，請確認' : `還要約 ${minutesText((dryTime - t) / MIN)}`,
     elapsedText: minutesText((t - session.startedAt) / MIN),
   }];
 }));
@@ -296,6 +299,9 @@ function startEdit() {
 const previewGarment = computed(() => (panel.value === 'edit' || panel.value === 'confirm') && draft.value ? draft.value : null);
 const dirty = computed(() => !!(draft.value && cur.value &&
   (['name', 'style', 'color', 'material'] as const).some((k) => draft.value![k] !== cur.value!.garment[k])));
+// Another garment of the same kind (real or demo) already has this name.
+const draftTaken = computed(() => !!(draft.value && cur.value &&
+  mock.garmentNameTaken(draft.value.name, cur.value.session.demo, cur.value.garment.id)));
 const predictChanged = computed(() => !!(draft.value && cur.value &&
   (draft.value.style !== cur.value.garment.style || draft.value.material !== cur.value.garment.material)));
 const changes = computed(() => {
@@ -312,38 +318,46 @@ function save() {
   if (!dirty.value || !cur.value) return;
   if (dryCount(cur.value.garment.id) > 0) panel.value = 'confirm'; else commit();
 }
-function commit() {
+// Writes go to the server; the panel only closes once they worked (otherwise the error shows).
+async function commit() {
   if (!draft.value || !cur.value) return;
   const reprice = predictChanged.value;
-  mock.updateGarment(cur.value.garment.id, { ...draft.value, name: draft.value.name.trim() || cur.value.garment.name });
-  if (reprice) mock.swapGarment(cur.value.session.id, cur.value.garment.id);  // re-predict with the new material/style
+  const { session, garment } = cur.value;
+  if (!await mock.updateGarment(garment.id, { ...draft.value, name: draft.value.name.trim() || garment.name })) return;
+  if (reprice && !await mock.swapGarment(session.id, garment.id)) return;  // re-predict with the new material/style
   closePanel();
 }
 function revert() { if (cur.value) draft.value = fromGarment(cur.value.garment); }
-function swapTo(garmentId: string) {
+// Only garments of the same kind (real or demo) as this session can be swapped in.
+const swapChoices = computed(() => cur.value ? mock.state.garments.filter((g) => g.demo === cur.value!.session.demo) : []);
+async function swapTo(garmentId: string) {
   if (!cur.value) return;
-  if (garmentId !== cur.value.garment.id) mock.swapGarment(cur.value.session.id, garmentId);
+  if (garmentId !== cur.value.garment.id && !await mock.swapGarment(cur.value.session.id, garmentId)) return;
   closePanel();
 }
-function addNew() {
+async function addNew() {
   if (!cur.value) return;
-  const g = mock.addGarment({ name: '新衣物', style: 'tee', color: '#F2F1EC', material: '棉' });
-  mock.swapGarment(cur.value.session.id, g.id);
+  const { session } = cur.value;
+  // Names must be unique, so pick 新衣物, 新衣物 2, … whichever is still free.
+  let name = '新衣物';
+  for (let n = 2; mock.garmentNameTaken(name, session.demo); n++) name = `新衣物 ${n}`;
+  const g = await mock.addGarment({ name, style: 'tee', color: '#F2F1EC', material: '棉' }, session.demo);
+  if (!g || !await mock.swapGarment(session.id, g.id)) return;
   draft.value = fromGarment(g);
   isNewGarment.value = true;
   panel.value = 'edit';
 }
-function finish(how: 'dry' | 'early' | 'cancel') {
+async function finish(how: 'dry' | 'early' | 'cancel') {
   if (!cur.value) return;
-  mock.endSession(cur.value.session.id, how);
-  closePanel();
+  if (await mock.endSession(cur.value.session.id, how)) closePanel();
 }
 
 const alerts = computed(() => {
   const c = cur.value;
   if (!c) return [];
   const out: { msg: string; action: string }[] = [];
-  const w = weather.value;
+  // The weather is demo data, so it only warns about demo sessions.
+  const w = c.session.demo ? weather.value : null;
   if (w && c.dryTime && c.dryTime > w.rainAt && w.rainAt - mock.now.value < DAY_MS / 2)
     out.push({ msg: `${c.garment.name}預計 ${clock(c.dryTime)} 才乾，但 ${clock(w.rainAt)} 起降雨機率 ${w.rainChance}%，`, action: `建議 ${clock(w.rainAt - 30 * MIN)} 前收進室內` });
   const humi = shownAir.value?.humi;
@@ -387,11 +401,11 @@ const idleForecast = computed(() => (['聚酯纖維', '棉', '牛仔布'] as Mat
 }));
 
 const lastRecord = computed(() => {
-  const done = mock.state.records.filter((r) => r.actualMin != null).sort((a, b) => b.startedAt - a.startedAt)[0];
+  const done = mock.state.records.filter((r) => r.outcome === 'dry' && r.actualMin != null).sort((a, b) => b.startedAt - a.startedAt)[0];
   if (!done) return null;
   const g = garmentById(done.garmentId);
   const end = done.startedAt + done.actualMin! * MIN;
-  return { name: g?.name ?? '已刪除的衣物', duration: shortDuration(done.actualMin!),
+  return { name: g?.name ?? '已刪除的衣物', demo: done.demo, duration: shortDuration(done.actualMin!),
     when: `${dayLabel(done.startedAt)} ${clock(done.startedAt)} 晾出，${clock(end)} 收衣` };
 });
 const availableClips = computed(() => mock.devices.value.filter((d) => !mock.activeClipIds.value.has(d.id) && mock.clipStatus(d).online).length);

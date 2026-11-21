@@ -32,32 +32,49 @@ const staleAfterMs = ref(3 * 60000);  // from the server: no report for this lon
 const loaded = ref(false);
 const air = ref<AirLatest | null>(null);  // null: no air box has ever reported
 
-// Air box picker: '' follows the server default (CLOTHES_AIRBOX_ID or the one that reported last).
+// Per-clip settings live on the server (/api/v1/clothes/clips), so every browser pairs the clip
+// with the same air box. There is one physical clip for now: the real clip with an MQTT topic.
+// Its id is a UUID from the server; until it is known, requests leave ?clip= out and the server
+// uses that clip anyway.
+export type ClipSettings = {
+  id: string; name: string; topic: string | null; is_demo: boolean; airbox_id: string | null; resolved_airbox_id: string | null;
+  predict_method: Field;
+};
+const clipSettings = ref<ClipSettings | null>(null);
+const clipSettingError = ref('');
+
+// The air box the clip uses: its own setting, else the server default (CLOTHES_AIRBOX_ID or the
+// one that reported last). Both come from the server as resolved ids.
 const airboxes = ref<Airbox[]>([]);
 const defaultAirboxId = ref<string | null>(null);
-const AIRBOX_KEY = 'clothes-airbox';
-const airboxChoice = ref((() => { try { return localStorage.getItem(AIRBOX_KEY) ?? ''; } catch { return ''; } })());
 const airboxOptions = computed(() => {
   const shown = airboxes.value.filter((box) => box.connected);
-  const picked = airboxes.value.find((box) => box.device_id === airboxChoice.value);
+  const picked = airboxes.value.find((box) => box.device_id === defaultAirboxId.value);
   if (picked && !picked.connected) shown.push(picked);  // keep the current choice visible even if it dropped off
   return shown;
 });
 export const airboxLabel = (box: Airbox) =>
   `${box.display_name ? `${box.display_name}（${box.device_id}）` : box.device_id}${box.connected ? '' : '（離線）'}`;
-// Adds ?airbox= only for an explicit choice, so "auto" keeps following the server default.
-export const withAirbox = (params: URLSearchParams) => { if (airboxChoice.value) params.set('airbox', airboxChoice.value); return params; };
+// The server picks the clip's air box from ?clip= (the real clip when left out).
+export const withClip = (params: URLSearchParams) => {
+  if (clipSettings.value) params.set('clip', clipSettings.value.id);
+  return params;
+};
+let airboxVersion = 0;  // bumps when the pairing changes, so late answers for the old box are dropped
 
 const controllers = new Set<AbortController>();
-export async function request(path: string) {
+export async function request(path: string, init: { method?: string; body?: unknown } = {}) {
   const controller = new AbortController();
   controllers.add(controller);
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(path, { cache: 'no-store', signal: controller.signal });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    if (!data.success) throw new Error(data.error || 'Request failed');
+    const response = await fetch(path, {
+      cache: 'no-store', signal: controller.signal, method: init.method,
+      headers: init.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success) throw new Error(data?.error || `HTTP ${response.status}`);
     return data;
   } finally { clearTimeout(timeout); controllers.delete(controller); }
 }
@@ -65,18 +82,49 @@ export async function request(path: string) {
 let airboxesLoaded = 0;
 async function loadAirboxes() {
   try {
-    const data = await request('/api/v1/clothes/airboxes');
-    if (!liveUsers) return;
-    airboxes.value = data.airboxes; defaultAirboxId.value = data.default_id; airboxesLoaded = Date.now();
+    const version = airboxVersion;
+    const [boxes, clips] = await Promise.all([
+      request(`/api/v1/clothes/airboxes?${withClip(new URLSearchParams())}`),
+      request('/api/v1/clothes/clips'),
+    ]);
+    if (!liveUsers || version !== airboxVersion) return;
+    airboxes.value = boxes.airboxes; defaultAirboxId.value = boxes.default_id; airboxesLoaded = Date.now();
+    clipSettings.value = clips.clips.find((clip: ClipSettings) => !clip.is_demo && clip.topic) ?? null;
   } catch { /* the picker keeps its last list */ }
 }
 
+// Pairing changed: drop air data for the old box and reload the same window with the new one.
+function airboxChanged(id: string | null) {
+  airboxVersion++;
+  defaultAirboxId.value = id;
+  air.value = null; airRecords.value = [];
+  if (liveUsers) void loadLatest();
+  if (!historyUsers) return;
+  if (mode.value === 'custom') void loadHistory(range.value.start, range.value.end); else historyUpdated = 0;
+}
+
+// Saves a clip setting on the server; the page only changes once it is stored. Returns false on failure.
+async function saveClip(patch: Partial<Pick<ClipSettings, 'airbox_id'>>) {
+  try {
+    if (!clipSettings.value) throw new Error('還沒有讀到衣夾資料，請稍後再試');
+    const data = await request(`/api/v1/clothes/clips/${clipSettings.value.id}`, { method: 'PATCH', body: patch });
+    const before = defaultAirboxId.value;
+    clipSettings.value = data.clip; clipSettingError.value = '';
+    if (data.clip.resolved_airbox_id !== before) airboxChanged(data.clip.resolved_airbox_id);
+    return true;
+  } catch (err) {
+    const message = (err as Error).message;
+    clipSettingError.value = message.includes('沒有儲存') ? message : `衣夾設定沒有儲存：${message}`;
+    return false;
+  }
+}
+const setClipAirbox = (id: string) => saveClip({ airbox_id: id });
+
 async function loadLatest() {
   try {
-    const choice = airboxChoice.value;
-    const query = withAirbox(new URLSearchParams()).toString();
-    const data = await request(`/api/v1/clothes/latest${query ? `?${query}` : ''}`);
-    if (!liveUsers || choice !== airboxChoice.value) return;  // the user switched air box meanwhile
+    const version = airboxVersion;
+    const data = await request(`/api/v1/clothes/latest?${withClip(new URLSearchParams())}`);
+    if (!liveUsers || version !== airboxVersion) return;  // the pairing changed meanwhile
     latest.value = data.data; stale.value = data.stale;
     if (typeof data.stale_after_ms === 'number') staleAfterMs.value = data.stale_after_ms;
     mqttConnected.value = data.mqtt_connected; ingestionError.value = data.ingestion_error;
@@ -122,7 +170,7 @@ const refreshSeconds = computed(() => Number(mode.value) > 60 ? 30 : 5);
 async function loadHistory(start: Date, end: Date) {
   const id = ++historyRequest;  // ignore responses for a range the user already left
   try {
-    const params = withAirbox(new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), limit: '5000' }));
+    const params = withClip(new URLSearchParams({ start: start.toISOString(), end: end.toISOString(), limit: '5000' }));
     const data = await request(`/api/v1/clothes/history?${params}`);
     if (!historyUsers || id !== historyRequest) return;
     range.value = { start, end };
@@ -158,14 +206,6 @@ watch(mode, (value) => {
   }
   historyUpdated = 0; historyLoading.value = true; records.value = [];
 });
-watch(airboxChoice, (value) => {
-  try { localStorage.setItem(AIRBOX_KEY, value); } catch { /* choice just lasts for this visit */ }
-  air.value = null; airRecords.value = [];
-  if (liveUsers) void loadLatest();
-  // Reload the same window with the new air box (presets refresh on the next poll).
-  if (!historyUsers) return;
-  if (mode.value === 'custom') void loadHistory(range.value.start, range.value.end); else historyUpdated = 0;
-});
 
 // ---------------------------------------------------------------- polling (ref-counted)
 let liveUsers = 0;
@@ -193,7 +233,8 @@ function stopIfIdle() {
 // ---------------------------------------------------------------- public API
 const liveState = {
   latest, error, ingestionError, mqttConnected, stale, staleAfterMs, loaded, air, clipOnline,
-  airboxes, defaultAirboxId, airboxChoice, airboxOptions, connectionTone, connectionText,
+  airboxes, defaultAirboxId, airboxOptions, connectionTone, connectionText,
+  clipSettings, clipSettingError, setClipAirbox,
 };
 
 // Read-only access without registering a consumer; it only updates while a page uses

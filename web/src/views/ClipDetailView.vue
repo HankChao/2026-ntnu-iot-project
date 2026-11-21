@@ -1,7 +1,7 @@
 <template>
   <div v-if="!device" class="page">
     <router-link to="/devices" class="back">← 設備狀況</router-link>
-    <h1>找不到這個衣夾</h1>
+    <h1>{{ mock.loaded.value ? '找不到這個衣夾' : '正在讀取衣夾…' }}</h1>
   </div>
 
   <div v-else class="page">
@@ -9,17 +9,18 @@
       <router-link to="/devices" class="back">← 設備狀況</router-link>
       <div class="page-head">
         <div class="title">
-          <h1>{{ device.name }}</h1>
+          <h1>{{ device.name }} <DemoTag v-if="device.demo" /></h1>
           <span class="status" :class="`status--${status.tone}`"><i></i>{{ status.label }}</span>
           <span v-if="device.live" class="conn muted">{{ connectionText }}</span>
         </div>
         <div role="group" aria-label="預測使用的感測法" class="method">
           <span class="muted">預測使用</span>
           <div class="ui-seg">
-            <button v-for="s in SENSORS" :key="s.key" type="button" :aria-pressed="method === s.key" @click="mock.setMethod(device.id, s.key)">{{ s.method }}</button>
+            <button v-for="s in SENSORS" :key="s.key" type="button" :aria-pressed="method === s.key" @click="pickMethod(s.key)">{{ s.method }}</button>
           </div>
         </div>
       </div>
+      <p v-if="(device.live && data.clipSettingError.value) || mock.actionError.value" class="ui-note ui-note--error" role="alert">{{ mock.actionError.value || data.clipSettingError.value }}</p>
     </div>
 
     <!-- ================= real clip ================= -->
@@ -167,7 +168,8 @@ import { useRoute } from 'vue-router';
 import { Line } from 'vue-chartjs';
 import { Chart as ChartJS, LinearScale, PointElement, LineElement, Tooltip, Legend, type ChartOptions, type Plugin } from 'chart.js';
 import { useTheme } from '../composables/useTheme';
-import { PRESETS, SENSORS, useClothesHistory, withAirbox, type Field, type Sensor } from '../composables/useClothesData';
+import DemoTag from '../components/clothes/DemoTag.vue';
+import { PRESETS, SENSORS, useClothesHistory, withClip, type Field, type Sensor } from '../composables/useClothesData';
 import { useClothesMock, type Method } from '../composables/useClothesMock';
 import { DAY_MS, agoText, clock, formatAir, formatRaw, formatTime, fromTaipeiInput, toTaipeiInput } from '../utils/format';
 
@@ -185,7 +187,11 @@ const {
 
 const device = computed(() => mock.clipById(String(route.params.id)));
 const status = computed(() => device.value ? mock.clipStatus(device.value) : { online: false, tone: 'off' as const, label: '離線', lastSeenMs: null, uptimeMin: null });
-const method = computed<Method>(() => (device.value && mock.state.methods[device.value.id]) || 'hx711_raw');
+// Each clip's method is a server setting (clips.predict_method), demo clips included.
+const method = computed<Method>(() => (device.value ? mock.methodOf(device.value.id) : 'hx711_raw'));
+function pickMethod(key: Method) {
+  if (device.value) void mock.setMethod(device.value.id, key);
+}
 const orderedSensors = computed(() => [...SENSORS].sort((a, b) => Number(b.key === method.value) - Number(a.key === method.value)));
 
 const latestJson = computed(() => latest.value
@@ -298,7 +304,7 @@ async function downloadCsv() {
   if (end.getTime() - start.getTime() > EXPORT_MAX_DAYS * DAY_MS) return exportNotice(`一次最多匯出 ${EXPORT_MAX_DAYS} 天。`, true);
   exporting.value = true; exportNotice('');
   try {
-    const params = withAirbox(new URLSearchParams({ start: start.toISOString(), end: end.toISOString() }));
+    const params = withClip(new URLSearchParams({ start: start.toISOString(), end: end.toISOString() }));
     const response = await fetch(`/api/v1/clothes/export?${params}`, { cache: 'no-store' });
     if (!response.ok) {
       const body = await response.json().catch(() => null);

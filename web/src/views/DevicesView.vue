@@ -8,10 +8,11 @@
       <div class="ui-stat" :class="{ 'ui-stat--warn': attention > 0 }"><span class="ui-stat__label">需要注意</span><span class="ui-stat__value">{{ attention }}<small> 台</small></span></div>
     </section>
 
+    <p v-if="mock.actionError.value" class="ui-note ui-note--error" role="alert">{{ mock.actionError.value }}</p>
     <section aria-label="衣夾" class="grid">
       <article v-for="c in clips" :key="c.device.id" class="dev" :class="{ warn: c.status.tone === 'warn', off: c.status.tone === 'off' }">
         <div class="dev-head">
-          <h2>{{ c.device.name }} <small v-if="c.device.live" class="real">實體裝置</small></h2>
+          <h2>{{ c.device.name }} <small v-if="c.device.live" class="real">實體裝置</small><DemoTag v-else /></h2>
           <span class="status" :class="`status--${c.status.tone}`"><i></i>{{ c.status.label }}</span>
         </div>
         <div class="facts">
@@ -32,7 +33,7 @@
         <div class="dev-foot">
           <code class="mono muted">{{ c.device.topic }}</code>
           <div class="foot-btns">
-            <button v-if="!c.status.online && !c.device.live" type="button" class="ui-btn" @click="mock.removeDevice(c.device.id)">移除</button>
+            <button v-if="!c.status.online && !c.device.live" type="button" class="ui-btn" @click="removeClip(c.device)">移除</button>
             <router-link :to="`/clips/${c.device.id}`" class="ui-btn">詳細資料</router-link>
           </div>
         </div>
@@ -94,7 +95,7 @@
       </div>
     </section>
 
-    <p v-if="mock.demoEnabled.value" class="demo-note">示範資料：衣夾-02～08 與連線事件為前端模擬；衣夾-01 與空氣盒子為實際資料。可在設定關閉示範資料。</p>
+    <p v-if="mock.demoEnabled.value" class="demo-note">標了「示範」的衣夾（衣夾-02～08）和連線事件是示範資料，狀態為模擬；衣夾-01 與空氣盒子為實際資料。可在設定關閉示範資料。</p>
     <p v-else class="demo-note">示範資料已關閉，只顯示實際的衣夾與空氣盒子。</p>
   </div>
 </template>
@@ -103,12 +104,17 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useClothesLive } from '../composables/useClothesData';
 import { useClothesMock } from '../composables/useClothesMock';
+import DemoTag from '../components/clothes/DemoTag.vue';
 import { useWebSocket } from '../composables/useWebSocket';
 import { agoText, clock, dayLabel, formatAir, formatRaw, minutesText } from '../utils/format';
 
 const { latest, connectionText } = useClothesLive();
 const mock = useClothesMock();
 const MIN = 60000;
+
+function removeClip(device: { id: string; name: string }) {
+  if (window.confirm(`移除示範的${device.name}？它的示範晾衣紀錄也會一起刪除，重設示範資料後會回來。`)) void mock.removeDevice(device.id);
+}
 
 const clips = computed(() => mock.devices.value.map((device) => {
   const session = mock.state.sessions.find((s) => s.clipId === device.id);

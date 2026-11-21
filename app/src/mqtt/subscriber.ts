@@ -7,8 +7,7 @@ import { globalEventBus } from '../events/bus';
 import type { OnlinePayload, SensorPayload, StatusPayload } from '../types';
 import { insertSensorData, setDeviceOnline, upsertDeviceStatus } from '../db/queries';
 import { ingestClothesRaw } from '../clothes/ingest';
-
-const clothesTopic = process.env.CLOTHES_MQTT_TOPIC || 'clothes/raw';
+import { CLOTHES_TOPIC as clothesTopic } from '../clothes/store';
 
 export class MQTTSubscriber {
   private client: MqttClient | null = null;

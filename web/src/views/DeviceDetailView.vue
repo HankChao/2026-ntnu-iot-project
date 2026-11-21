@@ -31,8 +31,9 @@
               <button class="btn btn-primary btn-xs" @click="saveName" :disabled="savingName">
                 {{ savingName ? '儲存中...' : '儲存' }}
               </button>
-              <button class="btn btn-subtle btn-xs" @click="isEditingName = false">取消</button>
+              <button class="btn btn-subtle btn-xs" @click="isEditingName = false; nameError = ''">取消</button>
             </div>
+            <p v-if="isEditingName && nameError" class="name-error" role="alert">{{ nameError }}</p>
             <div class="device-id-row">
               <span class="device-mac font-mono">{{ device.device_id }}</span>
               <span class="device-app-ver">MAPS v{{ device.version || '8.0.0' }}</span>
@@ -532,6 +533,7 @@ const saveSuccess = ref(false);
 const isEditingName = ref(false);
 const nameInput = ref('');
 const savingName = ref(false);
+const nameError = ref('');
 
 const actionNotice = ref<{ type: 'success' | 'error'; msg: string } | null>(null);
 
@@ -613,9 +615,12 @@ async function saveName() {
     if (data.success) {
       device.value = data.device;
       isEditingName.value = false;
+      nameError.value = '';
+    } else {
+      nameError.value = data.error || '名稱沒有儲存';  // e.g. another air box already has this name
     }
   } catch (err) {
-    alert(`儲存名稱失敗: ${err}`);
+    nameError.value = `儲存名稱失敗：${err}`;
   } finally {
     savingName.value = false;
   }
@@ -735,6 +740,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.name-error { margin-top: 6px; font-size: 0.8125rem; color: var(--err-tx); }
 .header-nav {
   display: flex;
   justify-content: space-between;

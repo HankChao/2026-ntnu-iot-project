@@ -3,7 +3,7 @@
 // ==============================================================================
 
 import { Hono } from 'hono';
-import { getDevice, getDeviceConfig, getDevices, setDeviceConfig, updateDeviceName } from '../db/queries';
+import { deviceNameTaken, getDevice, getDeviceConfig, getDevices, setDeviceConfig, updateDeviceName } from '../db/queries';
 import { mqttPublisher } from '../mqtt/publisher';
 
 export const devicesRoute = new Hono();
@@ -25,12 +25,29 @@ devicesRoute.get('/:id', async (c) => {
   return c.json({ success: true, device, config });
 });
 
-// PATCH /api/v1/devices/:id
+// Air box names: 1–40 characters after trimming, stored trimmed. undefined = bad value.
+export function parseDisplayName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.trim();
+  return name.length >= 1 && name.length <= 40 ? name : undefined;
+}
+
+// PATCH /api/v1/devices/:id — only the display name. Names must not repeat between air boxes.
 devicesRoute.patch('/:id', async (c) => {
   const id = c.req.param('id');
   const body = await c.req.json().catch(() => ({}));
   if (body.display_name !== undefined) {
-    await updateDeviceName(id, body.display_name);
+    const name = parseDisplayName(body.display_name);
+    if (name === undefined) return c.json({ success: false, error: '名稱必須是 1～40 個字' }, 400);
+    try {
+      if (!await getDevice(id)) return c.json({ success: false, error: '找不到這個空氣盒子' }, 404);
+      if (await deviceNameTaken(id, name)) return c.json({ success: false, error: `已經有名為「${name}」的空氣盒子` }, 409);
+      await updateDeviceName(id, name);
+    } catch (error) {
+      // The unique index catches a name taken at the same moment.
+      if ((error as any)?.errno === '23505') return c.json({ success: false, error: `已經有名為「${name}」的空氣盒子` }, 409);
+      return c.json({ success: false, error: '資料庫無法寫入，名稱沒有儲存' }, 503);
+    }
   }
   const device = await getDevice(id);
   return c.json({ success: true, device });

@@ -3,6 +3,15 @@ import type { ClothesRaw } from './validation';
 
 export const clothesState = { schemaReady: false, lastError: null as string | null };
 
+// The MQTT topic of the physical clip. The clip with this topic in `clips` owns every reading on it.
+export const CLOTHES_TOPIC = process.env.CLOTHES_MQTT_TOPIC || 'clothes/raw';
+// Clips, garments and sessions use server-generated UUIDs.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);
+// The clip reports once a minute (every 10 s while handled) and sleeps in between,
+// so data counts as interrupted only after three missed reports.
+export const CLIP_STALE_MS = 3 * 60000;
+
 // Idempotent migration runs for both new and existing database volumes.
 export async function ensureClothesSchema(): Promise<void> {
   if (!dbClient.isConnected()) throw new Error('Database unavailable');
@@ -16,7 +25,18 @@ export async function ensureClothesSchema(): Promise<void> {
       touch_raw INTEGER CHECK (touch_raw BETWEEN 0 AND 4194303)
     )`;
   await sql`CREATE INDEX IF NOT EXISTS clothes_raw_timestamp_idx ON clothes_raw (timestamp DESC, id DESC)`;
+  await ensureAirboxNameIndex(sql);
   clothesState.schemaReady = true;
+}
+
+// Air box names must not repeat (ignoring case and surrounding spaces). If an old database already
+// has a repeat the index cannot be built; renaming still checks in code, so only warn.
+async function ensureAirboxNameIndex(sql: any) {
+  try {
+    await sql`CREATE UNIQUE INDEX IF NOT EXISTS devices_display_name_key ON devices (lower(btrim(display_name))) WHERE display_name IS NOT NULL`;
+  } catch (error) {
+    console.warn('[Clothes] Air box names repeat, unique index not created:', (error as Error).message);
+  }
 }
 
 function database() {
@@ -67,10 +87,21 @@ export function clothesCsvLine(row: CsvRow) {
 export const AIR_MAX_AGE_MS = 5 * 60000;
 export type AirReading = { timestamp: Date | string; temp: number | null; humi: number | null };
 
-// Which air box to pair with the clip: CLOTHES_AIRBOX_ID, or else the one that reported most recently.
-export async function clothesAirboxId(): Promise<string | null> {
+// The clip that owns CLOTHES_TOPIC (the real clip); null before the drying schema has created it.
+export async function rawClipId(): Promise<string | null> {
+  const rows = await database()`SELECT id FROM clips WHERE topic = ${CLOTHES_TOPIC} AND NOT is_demo`;
+  return rows[0]?.id ?? null;
+}
+
+// Which air box to pair with a clip (default: the real clip): the clip's own setting
+// (clips.airbox_id), else CLOTHES_AIRBOX_ID, else the one that reported most recently.
+export async function clothesAirboxId(clipId?: string): Promise<string | null> {
+  const sql = database();
+  const id = clipId ?? await rawClipId();
+  const clips = id ? await sql`SELECT airbox_id FROM clips WHERE id = ${id}::uuid` : [];
+  if (clips[0]?.airbox_id) return clips[0].airbox_id;
   if (process.env.CLOTHES_AIRBOX_ID) return process.env.CLOTHES_AIRBOX_ID;
-  const rows = await database()`SELECT device_id FROM sensor_data ORDER BY timestamp DESC LIMIT 1`;
+  const rows = await sql`SELECT device_id FROM sensor_data ORDER BY timestamp DESC LIMIT 1`;
   return rows[0]?.device_id ?? null;
 }
 

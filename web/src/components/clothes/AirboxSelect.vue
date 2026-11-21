@@ -1,6 +1,6 @@
 <template>
   <select :id="id" class="ui-select" :class="{ 'ui-select--sm': small }" :value="current" :disabled="!options.length"
-    @change="airboxChoice = ($event.target as HTMLSelectElement).value">
+    :title="clipSettingError || undefined" @change="pick($event.target as HTMLSelectElement)">
     <option v-if="!options.length" value="">目前沒有空氣盒子</option>
     <option v-for="box in options" :key="box.device_id" :value="box.device_id">{{ airboxLabel(box) }}</option>
   </select>
@@ -12,11 +12,16 @@ import { airboxLabel, clothesLiveState, type Airbox } from '../../composables/us
 
 defineProps<{ id: string; small?: boolean }>();
 
-const { airboxChoice, airboxOptions, airboxes, defaultAirboxId } = clothesLiveState;
+const { airboxOptions, airboxes, defaultAirboxId, clipSettingError, setClipAirbox } = clothesLiveState;
 
-// Without an explicit choice the server picks a box (CLOTHES_AIRBOX_ID or the last one that reported);
-// show that box by name instead of "自動".
-const current = computed(() => airboxChoice.value || defaultAirboxId.value || '');
+// The pairing is a per-clip setting on the server. Without one the server still picks a box
+// (CLOTHES_AIRBOX_ID or the last one that reported); show that box by name instead of "自動".
+const current = computed(() => defaultAirboxId.value || '');
+
+async function pick(select: HTMLSelectElement) {
+  const ok = await setClipAirbox(select.value);
+  if (!ok) select.value = current.value;  // not stored: show the pairing that is really in use
+}
 const options = computed<Airbox[]>(() => {
   const list = [...airboxOptions.value];
   const id = current.value;

@@ -339,6 +339,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .status--off i { background: transparent; border: 2px solid var(--mu); }
 
 .demo-note { font-size: 0.8125rem; color: var(--mu); border-top: 1px solid var(--bd); padding-top: 16px; }
+/* Marks demo clips, garments, sessions and records wherever they appear next to real ones. */
+.demo-tag { display: inline-block; flex: 0 0 auto; font-size: 0.75rem; font-weight: 500; line-height: 1.4; padding: 1px 8px; border-radius: 999px;
+  border: 1px dashed var(--bd2); background: var(--sf2); color: var(--tx2); vertical-align: middle; white-space: nowrap; }
 
 .mono { font-family: var(--font-mono); }
 .num { font-family: var(--font-num); }

@@ -106,6 +106,7 @@ cd web; bun install; bun run dev
 | `make test-web` | 確認前端能 build | `cd web; bun install; bun run build` |
 | `make typecheck` | 前端型別檢查（vue-tsc 2.2 + TypeScript 5.8） | — |
 | `make sim` | 送 60 筆模擬衣夾資料；`make sim SIM_COUNT=10` 可改筆數 | `docker compose exec -T -e SIM_COUNT=60 app bun scripts/publish-clothes.ts` |
+| `make seed` | 寫入示範資料（衣夾-02～08、衣物、晾衣紀錄）；已經寫過就略過 | `docker compose exec -T app bun scripts/seed-demo.ts` |
 | `make smoke` | 整合測試 MQTT → DB → API | `python tools/smoke_clothes.py`、`python tools/smoke_maps.py` |
 
 `make typecheck` 第一次執行時會把工具裝到 `~/.cache/iot-server-typecheck`。不用 `web/package.json` 裡的 vue-tsc 1.8，因為它和現在的 TypeScript 不相容。
@@ -130,6 +131,14 @@ make sim   # 需先 make up 或 make dev
 ```
 
 發送 60 筆後自動結束，首頁應出現三條曲線。這不是硬體實測。
+
+### 示範資料（衣夾-02～08、衣物、晾衣紀錄）
+
+```bash
+make seed  # 需先 make up 或 make dev；已經寫過就略過
+```
+
+示範資料和真資料存在同一組資料表，以 `is_demo = true` 標記：API 預設不回傳，設定頁開啟「示範資料」後才會一起顯示，並加上「示範」標籤。衣夾-01 是實際的衣夾，不會有示範資料。要重來請到晾衣紀錄頁按「重設示範資料」，只會重建示範資料，真資料不受影響。
 
 ### 整合測試（smoke test）
 

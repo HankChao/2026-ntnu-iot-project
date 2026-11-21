@@ -11,15 +11,16 @@
         <h3 class="section-title">示範資料</h3>
         <label class="switch-row" for="demo-switch">
           <span>顯示示範資料</span>
-          <input id="demo-switch" class="switch" type="checkbox" role="switch" :checked="demoEnabled"
-            @change="setDemoEnabled(($event.target as HTMLInputElement).checked)" />
+          <input id="demo-switch" class="switch" type="checkbox" role="switch" :checked="demoEnabled" :disabled="saving"
+            @change="toggleDemo($event.target as HTMLInputElement)" />
         </label>
         <p class="switch-note">
           {{ demoEnabled
-            ? '目前顯示示範的衣夾-02～08、衣物、晾衣紀錄、預測與天氣。關閉後只留下實際的衣夾與空氣盒子。'
-            : '目前只顯示實際的衣夾與空氣盒子；衣物與晾衣紀錄只會有你實際記錄的內容。示範資料仍保留，重新開啟就會回來。' }}
+            ? '目前一起顯示示範的衣夾-02～08、衣物、晾衣紀錄與天氣，並標上「示範」；統計只算實際資料。關閉後只留下實際的資料。'
+            : '目前只顯示實際的衣夾、衣物與晾衣紀錄。示範資料仍保留在伺服器，重新開啟就會回來。' }}
         </p>
-        <p class="switch-note muted">這個設定與你記錄的衣物、晾衣紀錄目前存在這台瀏覽器。</p>
+        <p v-if="demoError || settingsError" class="ui-note ui-note--error" role="alert">{{ demoError || settingsError }}</p>
+        <p class="switch-note muted">這個開關、衣物與晾衣紀錄都存在伺服器，所有瀏覽器都一樣。示範資料以 is_demo 標記，第一次使用請執行 make seed 建立。</p>
       </div>
 
       <!-- Health Card -->
@@ -99,8 +100,24 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useClothesMock } from '../composables/useClothesMock';
+import { useSettings } from '../composables/useSettings';
 
 const { demoEnabled, setDemoEnabled } = useClothesMock();
+const { settingsError } = useSettings();
+const saving = ref(false);
+const demoError = ref('');
+
+// The switch only moves once the server has stored the setting.
+async function toggleDemo(input: HTMLInputElement) {
+  const wanted = input.checked;
+  saving.value = true; demoError.value = '';
+  try { await setDemoEnabled(wanted); } catch (err) {
+    demoError.value = (err as Error).message;  // the server says what was not stored
+  } finally {
+    saving.value = false;
+    input.checked = demoEnabled.value;
+  }
+}
 
 const health = ref<any>({});
 const stats = ref<any>({});
