@@ -126,13 +126,22 @@ static void check_command(void)
     if (found <= 0) return;
     cJSON *json = cJSON_Parse(command);
     cJSON *sha_item = cJSON_GetObjectItem(json, "sha"), *path = cJSON_GetObjectItem(json, "path");
+    cJSON *host_item = cJSON_GetObjectItem(json, "host");
     cJSON *port = cJSON_GetObjectItem(json, "port"), *size = cJSON_GetObjectItem(json, "size");
+    const char *host = cJSON_IsString(host_item) ? host_item->valuestring : network_host();
+    size_t host_len = strlen(host);
+    bool valid_host = host_len > 0 && host_len <= 128;
+    for (size_t i = 0; valid_host && i < host_len; i++) {
+        char ch = host[i];
+        valid_host = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                     (ch >= '0' && ch <= '9') || ch == '.' || ch == '-';
+    }
     bool ok = cJSON_IsString(sha_item) && strlen(sha_item->valuestring) == 64 && cJSON_IsString(path) &&
-              path->valuestring[0] == '/' && cJSON_IsNumber(port) && cJSON_IsNumber(size);
+              path->valuestring[0] == '/' && cJSON_IsNumber(port) && cJSON_IsNumber(size) && valid_host;
     int bytes = ok ? size->valueint : 0;
     if (ok) {
         snprintf(sha, sizeof(sha), "%s", sha_item->valuestring);
-        ok = snprintf(url, sizeof(url), "http://%s:%d%s", network_host(), port->valueint, path->valuestring) < (int)sizeof(url);
+        ok = snprintf(url, sizeof(url), "http://%s:%d%s", host, port->valueint, path->valuestring) < (int)sizeof(url);
     }
     cJSON_Delete(json);
     if (!ok) { printf("OTA command ignored (malformed)\n"); return; }

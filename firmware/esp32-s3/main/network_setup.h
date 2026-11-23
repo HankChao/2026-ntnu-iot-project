@@ -16,7 +16,7 @@ bool network_publish_to(const char *suffix, const char *json, bool retain, int a
 // The retained update command on "clothes/<id>/ota": 1 = copied to out, 0 = the broker holds none,
 // -1 = not known (the subscription was not confirmed within wait_ms).
 int network_ota_command(char *out, size_t size, int wait_ms);
-const char *network_host(void);  // the MQTT broker's host, which also serves firmware images
+const char *network_host(void);  // the MQTT broker host; OTA uses it only when the command has no host
 // False while the setup hotspot is open or requested, a settings test runs, GPIO0 is held,
 // or there are no usable settings.
 bool network_sleep_allowed(void);

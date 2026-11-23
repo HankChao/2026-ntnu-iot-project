@@ -40,6 +40,20 @@ describe('Firmware messages', () => {
       sha: SHA, size: 1105920, port: 8088, path: `/api/v1/clothes/firmware/${ID}/image?token=abc`,
     });
   });
+  it('uses a dedicated LAN host for firmware downloads', () => {
+    const previousHost = process.env.FIRMWARE_HTTP_HOST;
+    process.env.FIRMWARE_HTTP_HOST = '192.168.1.109';
+    try {
+      expect(JSON.parse(otaCommand({ id: ID, elf_sha: SHA, size: 1105920, token: 'abc' }))).toMatchObject({
+        host: '192.168.1.109', port: 8088,
+      });
+      process.env.FIRMWARE_HTTP_HOST = 'http://invalid/path';
+      expect(() => otaCommand({ id: ID, elf_sha: SHA, size: 1105920, token: 'abc' })).toThrow();
+    } finally {
+      if (previousHost === undefined) delete process.env.FIRMWARE_HTTP_HOST;
+      else process.env.FIRMWARE_HTTP_HOST = previousHost;
+    }
+  });
   it('accepts clip reports and ignores anything else', () => {
     expect(parseFirmwareReport(JSON.stringify({ version: '0.4.0', sha: SHA, state: 'running' })))
       .toEqual({ version: '0.4.0', sha: SHA, state: 'running', progress: 0, target: null, detail: null });

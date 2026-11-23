@@ -16,6 +16,7 @@ import { LEGACY_TOPIC, clipIdForDevice, clipTopic, defaultClipId, isUuid } from 
 export const FIRMWARE_MAX_BYTES = 3 * 1024 * 1024;  // one OTA slot (see firmware partitions.csv)
 // Port the clips use to reach this server's HTTP API: nginx in the web container.
 const DEVICE_HTTP_PORT = Number(process.env.FIRMWARE_HTTP_PORT) || 8088;
+const HTTP_HOST = /^[A-Za-z0-9.-]{1,128}$/;
 const ESP32_S3_CHIP_ID = 9;
 const SHA = /^[0-9a-f]{64}$/;
 
@@ -60,8 +61,11 @@ export function parseFirmwareReport(text: string): FirmwareReport | null {
 
 // Pure: the retained command a clip reads when it wakes.
 export function otaCommand(image: { id: string; elf_sha: string; size: number; token: string }) {
+  const configuredHost = process.env.FIRMWARE_HTTP_HOST?.trim();
+  if (configuredHost && !HTTP_HOST.test(configuredHost)) throw new Error('FIRMWARE_HTTP_HOST is not a valid hostname or IPv4 address');
   return JSON.stringify({
     sha: image.elf_sha, size: image.size, port: DEVICE_HTTP_PORT,
+    host: configuredHost || undefined,
     path: `/api/v1/clothes/firmware/${image.id}/image?token=${image.token}`,
   });
 }

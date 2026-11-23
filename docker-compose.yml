@@ -52,8 +52,9 @@ services:
       MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
       CLOTHES_MQTT_TOPIC: ${CLOTHES_MQTT_TOPIC:-}
       CLOTHES_AIRBOX_ID: ${CLOTHES_AIRBOX_ID:-}
-      # Port the clips use to download firmware updates from this host (nginx in the web container).
-      FIRMWARE_HTTP_PORT: ${WEB_PORT:-8088}
+      # LAN address and port clips use to download firmware from nginx in the web container.
+      FIRMWARE_HTTP_HOST: ${FIRMWARE_HTTP_HOST:-}
+      FIRMWARE_HTTP_PORT: ${FIRMWARE_HTTP_PORT:-8088}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
       ADMIN_HTPASSWD_FILE: ${ADMIN_HTPASSWD_FILE:-}
