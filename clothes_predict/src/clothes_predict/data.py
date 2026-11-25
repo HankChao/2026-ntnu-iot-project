@@ -21,15 +21,25 @@ def list_files() -> list[Path]:
     return sorted(DATA_DIR.glob("*.csv"))
 
 
+# 伺服器 CSV 匯出的戶外欄位（中央氣象署測站，見 iot_server README「戶外觀測」）。
+# 舊的 CSV 沒有這些欄位，讀進來是 NaN。
+OUTDOOR_COLUMNS = [
+    "out_temp_c", "out_humi_pct", "out_wind_ms", "out_wind_dir_deg", "out_gust_ms", "out_pressure_hpa",
+    "out_rain_10min_mm", "out_rain_1h_mm", "out_rain_day_mm", "out_sunshine_h", "out_sunshine_1h_h",
+    "out_radiation_1h_mj", "out_uv",
+]
+COLUMNS = ["hx711_raw", "ads1115_raw", "touch_raw", "air_temp_c", "air_humi_pct", *OUTDOOR_COLUMNS]
+
+
 def load(path: Path) -> pd.DataFrame:
-    """回傳以台北時間為 index 的 DataFrame，欄位統一為 hx711_raw、ads1115_raw、touch_raw、air_temp_c、air_humi_pct。"""
+    """回傳以台北時間為 index 的 DataFrame，欄位統一為 COLUMNS（感測值、空氣盒子溫濕度、戶外 out_*）。"""
     df = pd.read_csv(path, encoding="utf-8-sig")
     df["time"] = pd.to_datetime(df["time_taipei"])
     df = df.set_index("time").sort_index()
-    for col in ("air_temp_c", "air_humi_pct"):
+    for col in COLUMNS:
         if col not in df:
             df[col] = float("nan")
-    return df[["hx711_raw", "ads1115_raw", "touch_raw", "air_temp_c", "air_humi_pct"]]
+    return df[COLUMNS]
 
 
 # ---------------------------------------------------------------------------
