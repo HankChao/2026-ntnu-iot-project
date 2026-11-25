@@ -73,8 +73,8 @@
               <span>風向</span>
               <strong class="wind-value"><i :style="{ transform: `rotate(${outdoor?.wind_direction ?? 0}deg)` }">↑</i>{{ windDirectionText }}</strong>
             </article>
-            <article>
-              <span>目前降水</span><strong>{{ display(outdoor?.rain_mm) }}<small>mm</small></strong>
+            <article :title="rainDayText">
+              <span>近 1 小時雨量</span><strong>{{ display(outdoor?.rain_1h_mm) }}<small>mm</small></strong>
             </article>
             <article>
               <span>氣壓</span><strong>{{ display(outdoor?.pressure) }}<small>hPa</small></strong>
@@ -121,7 +121,7 @@
 
     <footer class="weather-source">
       <span>資料來源：交通部中央氣象署 Open Data</span>
-      <span>單一觀測站原始值 · 觀測每 10 分鐘快取 · 縣市預報每 30 分鐘快取</span>
+      <span>單一觀測站原始值 · 雨量取自同站雨量計 · 觀測每 10 分鐘快取 · 縣市預報每 30 分鐘快取</span>
     </footer>
   </div>
 </template>
@@ -135,7 +135,11 @@ const { counties, county, districts, district, outdoor, forecast, forecastUpdate
 const activePeriod = computed(() => forecast.value[0] ?? null);
 const rainProbability = computed(() => activePeriod.value?.rain_probability ?? 0);
 const weatherText = computed(() => `${outdoor.value?.weather ?? ''} ${activePeriod.value?.weather ?? ''}`);
-const rainy = computed(() => (outdoor.value?.rain_mm ?? 0) > 0 || rainProbability.value >= 45 || weatherText.value.includes('雨'));
+// rain_mm is today's total since 00:00, so rain early this morning does not mean it is raining now;
+// the rain gauge's last 10 minutes / hour does.
+const rainingNow = computed(() => (outdoor.value?.rain_10min_mm ?? 0) > 0 || (outdoor.value?.rain_1h_mm ?? 0) > 0);
+const rainy = computed(() => rainingNow.value || rainProbability.value >= 45 || weatherText.value.includes('雨'));
+const rainDayText = computed(() => `今日累積雨量 ${display(outdoor.value?.rain_mm)} mm`);
 const stormy = computed(() => weatherText.value.includes('雷'));
 const windy = computed(() => (outdoor.value?.wind_speed ?? 0) >= 7 || (outdoor.value?.gust_speed ?? 0) >= 11);
 const condition = computed(() => {

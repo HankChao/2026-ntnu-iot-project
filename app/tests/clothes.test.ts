@@ -40,15 +40,21 @@ describe('Clothes MQTT contract', () => {
     }
   });
   it('writes CSV lines in Taipei and UTC time with empty cells for failed reads', () => {
-    expect(CSV_HEADER).toBe('time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct\n');
+    const out = ',,,,,,,,,,,,,'; // 13 outdoor columns, blank without stored observations
+    expect(CSV_HEADER).toBe('time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct,' +
+      'out_temp_c,out_humi_pct,out_wind_ms,out_wind_dir_deg,out_gust_ms,out_pressure_hpa,out_rain_10min_mm,out_rain_1h_mm,' +
+      'out_rain_day_mm,out_sunshine_h,out_sunshine_1h_h,out_radiation_1h_mj,out_uv\n');
     expect(clothesCsvLine({ id: '1', timestamp: new Date('2026-11-13T17:15:53.250Z'), hx711_raw: -1500, ads1115_raw: null, touch_raw: 0 }))
-      .toBe('2026-11-14 01:15:53.250,2026-11-13T17:15:53.250Z,-1500,,,0,,\n');
+      .toBe(`2026-11-14 01:15:53.250,2026-11-13T17:15:53.250Z,-1500,,,0,,${out}\n`);
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 2, touch_raw: 3, air_temp: 24.5, air_humi: 61.25 }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,2,,3,24.5,61.25\n');
+      .toBe(`2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,2,,3,24.5,61.25${out}\n`);
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 5000, touch_raw: 3, ads1115_ohm: 245123.6 }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,5000,245124,3,,\n');
+      .toBe(`2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,5000,245124,3,,${out}\n`);
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 22740, touch_raw: 3, ads1115_ohm: Infinity }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,22740,,3,,\n');
+      .toBe(`2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,22740,,3,,${out}\n`);
+    expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 2, touch_raw: 3,
+      outdoor: { temp: 21.5, hum: 80, wind_speed: 2.3, rain_1h_mm: 0, uv: null } }))
+      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,2,,3,,,21.5,80,2.3,,,,,0,,,,,\n');
   });
   it('pairs each clip reading with the latest air reading no older than 5 minutes', () => {
     const t = (minutes: number) => new Date(Date.UTC(2026, 10, 14, 0, 0) + minutes * 60000).toISOString();

@@ -10,6 +10,7 @@ ESP32 智慧衣夾 → MQTT → 後端加上收到時間 → PostgreSQL → 網�
 | --- | --- |
 | `app/` | 後端：Bun + Hono + `Bun.sql`（PostgreSQL）+ mqtt.js。入口 `app/src/index.ts` |
 | `app/src/clothes/` | 衣夾資料：`validation.ts`（MQTT 內容檢查）、`ingest.ts`、`store.ts`（建表、查詢、CSV、空氣盒子對應）、`drying.ts`（衣夾設定、衣物庫、晾衣）、`prediction.ts`（乾燥預測）、`demo.ts`（示範資料內容、`make seed`、重設） |
+| `app/src/weather/` | 中央氣象署：`cwa.ts`（抓取、解析、快取，網頁和 poller 共用）、`store.ts`（`weather_obs` 表、查詢、CSV 配對 `attachOutdoor`）、`poller.ts`（每 5 分鐘存設定測站）、`codis.ts`（CODiS 逐時 CSV 解析）。API 在 `routes/weather.ts` |
 | `app/src/settings/` | 全站設定 `app_settings`（key → JSON，白名單在 `SETTING_DEFS`） |
 | `app/src/routes/` | API，掛在 `/api/v1`。衣夾相關的在 `clothes.ts`、`drying.ts`，全站設定在 `settings.ts` |
 | `app/src/mqtt/subscriber.ts` | 訂閱 `MAPS/+/sensor`、`MAPS/+/status`、`MAPS/+/online`、`clothes/+/raw`、`clothes/+/fw` |
@@ -58,6 +59,14 @@ ESP32 智慧衣夾 → MQTT → 後端加上收到時間 → PostgreSQL → 網�
   - 示範衣夾沒有實體裝置，它們的更新進度由前端模擬（`useFirmware.ts`）。
 - 錯誤：呼叫端的錯誤用 `HttpError` 回 400／404／409，資料庫問題回 503。
 
+### 戶外觀測（`/api/v1/weather`、表 `weather_obs`）
+- poller（`startWeatherPoller`）每 5 分鐘抓 O-A0001／O-A0003／O-A0002，只存 `CWA_STATION`（站名或站號，預設臺北）和 `CWA_RAIN_STATION`（預設同 `CWA_STATION`）。沒有 `CWA_API_KEY` 就不啟動。`UNIQUE (dataset, station_id, observed_at)`，重複的略過。抓失敗不寫，不能用快取或預設值補。
+- `observed_at` 是氣象署的觀測時間（這是例外：衣夾讀值的時間才一律由後端加）。`fetched_at` 是後端抓到的時間。
+- **`WeatherElement.Now.Precipitation`（API 的 `rain_mm`、表的 `rain_day_mm`）是本日 0 時至今累積雨量**，不是現在在下雨；現在的雨用 O-A0002 的 `rain_10min_mm`／`rain_1h_mm`。
+- API 資料另存整個測站物件到 `raw`（JSONB）。欄位路徑有疑問時用 `make weather-check` 對照原始欄位。
+- 開放資料 API 只給最新一筆；之前的時段用 CODiS 逐時 CSV 匯入（`scripts/import-codis.ts`，`dataset = 'CODiS'`，該小時的量存在 `rain_1h_mm`、`sunshine_1h_h`、`radiation_1h_mj`）。
+- CSV 匯出的 13 個 `out_*` 欄位由 `attachOutdoor` 逐欄取最近一筆有值的觀測，10 分鐘資料 20 分鐘內有效、逐時資料 70 分鐘內有效（`OUTDOOR_MAX_AGE_MS`）。改欄位時 `WEATHER_FIELDS`、`OUTDOOR_CSV_COLUMNS`、migration 011、README 要一起改。
+
 ### 全站設定（`/api/v1/settings`）
 `GET`、`PATCH`。目前只有 `demo_data`（預設 `true`），未知 key 回 400。寫 JSONB 時參數要用 `${JSON.stringify(v)}::text::jsonb`：直接 `::jsonb` 的話 Bun 會再編碼一次，存成 JSON 字串。
 
@@ -76,6 +85,8 @@ make typecheck   # 前端型別檢查（vue-tsc 2.2 + TypeScript 5.8）
 make sim         # 沒板子時送模擬衣夾資料（SIM_COUNT=10 可改筆數）
 make seed        # 寫入示範資料（衣夾-02～06、衣物、晾衣紀錄）；已經有就略過
 make check       # MQTT 帳密是否正確、哪些裝置被拒絕
+make weather-check   # 用 CWA_API_KEY 抓一次，印出設定測站的解析結果（不寫資料庫）
+make weather-import f=檔案.csv station=466920 name=臺北   # 匯入 CODiS 逐時 CSV
 make smoke       # 整合測試，需要 tools/config.json，會寫入測試資料
 ```
 

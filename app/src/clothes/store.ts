@@ -1,5 +1,8 @@
 import { dbClient } from '../db/client';
 import type { ClothesRaw } from './validation';
+import {
+  attachOutdoor, configuredStationIds, OUTDOOR_LOOKBACK_MS, storedWeather, WEATHER_FIELDS, type OutdoorValues, type WeatherField,
+} from '../weather/store';
 
 export const clothesState = { schemaReady: false, lastError: null as string | null };
 
@@ -118,9 +121,17 @@ export function historyBucketSeconds(start: Date, end: Date, limit: number) {
 
 // ads1115_ohm: fabric resistance from the clip's divider setting at that time; empty when the clip
 // had no setting yet or the fabric was beyond what the divider resolves (open).
-export const CSV_HEADER = 'time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct\n';
+// out_*: the CWA station set by CWA_STATION / CWA_RAIN_STATION (weather_obs), latest observation at or
+// before the reading; blank when there is none recent enough (see OUTDOOR_MAX_AGE_MS).
+export const OUTDOOR_CSV_COLUMNS: Record<WeatherField, string> = {
+  temp: 'out_temp_c', hum: 'out_humi_pct', wind_speed: 'out_wind_ms', wind_dir: 'out_wind_dir_deg', gust: 'out_gust_ms',
+  pressure: 'out_pressure_hpa', rain_10min_mm: 'out_rain_10min_mm', rain_1h_mm: 'out_rain_1h_mm', rain_day_mm: 'out_rain_day_mm',
+  sunshine_h: 'out_sunshine_h', sunshine_1h_h: 'out_sunshine_1h_h', radiation_1h_mj: 'out_radiation_1h_mj', uv: 'out_uv',
+};
+export const CSV_HEADER = 'time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct,' +
+  WEATHER_FIELDS.map((field) => OUTDOOR_CSV_COLUMNS[field]).join(',') + '\n';
 export type CsvRow = { id: string; timestamp: Date | string; hx711_raw: number | null; ads1115_raw: number | null; touch_raw: number | null;
-  air_temp?: number | null; air_humi?: number | null; ads1115_ohm?: number | null };
+  air_temp?: number | null; air_humi?: number | null; ads1115_ohm?: number | null; outdoor?: OutdoorValues };
 const TAIPEI_MS = 8 * 60 * 60000;
 const csvValue = (value: number | null | undefined) => value == null ? '' : String(value);
 
@@ -130,7 +141,8 @@ export function clothesCsvLine(row: CsvRow) {
   const taipei = new Date(time.getTime() + TAIPEI_MS).toISOString().replace('T', ' ').slice(0, 23);
   return `${taipei},${time.toISOString()},${csvValue(row.hx711_raw)},${csvValue(row.ads1115_raw)},` +
     `${row.ads1115_ohm == null || !Number.isFinite(row.ads1115_ohm) ? '' : Math.round(row.ads1115_ohm)},${csvValue(row.touch_raw)},` +
-    `${csvValue(row.air_temp)},${csvValue(row.air_humi)}\n`;
+    `${csvValue(row.air_temp)},${csvValue(row.air_humi)},` +
+    `${WEATHER_FIELDS.map((field) => csvValue(row.outdoor?.[field])).join(',')}\n`;
 }
 
 // ===== Air box (MAPS) temperature / humidity alongside the clip =====
@@ -197,6 +209,8 @@ export function attachAir<T extends CsvRow>(rows: T[], air: AirReading[], maxAge
 export async function* clothesExportRows(start: Date, end: Date, pageSize = 5000, airboxId: string | null = null, clipId: string | null = null) {
   const sql = database();
   if (!clipId) return;
+  // Outdoor observations are a bonus like the air box: unreadable or not stored yet = blank cells.
+  const stationIds = await configuredStationIds().catch(() => [] as string[]);
   let after: { timestamp: Date | string; id: string } | null = null;
   while (true) {
     const rows: CsvRow[] = after
@@ -211,6 +225,11 @@ export async function* clothesExportRows(start: Date, end: Date, pageSize = 5000
     if (rows.length && airboxId) {
       const first = new Date(rows[0].timestamp), last = new Date(rows[rows.length - 1].timestamp);
       attachAir(rows, await airReadings(airboxId, new Date(first.getTime() - AIR_MAX_AGE_MS), last));
+    }
+    if (rows.length && stationIds.length) {
+      const first = new Date(rows[0].timestamp), last = new Date(rows[rows.length - 1].timestamp);
+      const observations = await storedWeather(stationIds, new Date(first.getTime() - OUTDOOR_LOOKBACK_MS), last).catch(() => []);
+      attachOutdoor(rows, observations);
     }
     yield rows;
     if (rows.length < pageSize) return;

@@ -118,6 +118,8 @@ cd web; bun install; bun run dev
 | `make typecheck` | 前端型別檢查（vue-tsc 2.2 + TypeScript 5.8） | — |
 | `make sim` | 送 60 筆模擬衣夾資料；`make sim SIM_COUNT=10` 可改筆數 | `docker compose exec -T -e SIM_COUNT=60 app bun scripts/publish-clothes.ts` |
 | `make seed` | 寫入示範資料（衣夾-02～06、衣物、晾衣紀錄）；已經寫過就略過 | `docker compose exec -T app bun scripts/seed-demo.ts` |
+| `make weather-check` | 用 `CWA_API_KEY` 抓一次氣象署，印出設定測站的解析結果與原始欄位（不寫資料庫） | `docker compose exec -T app bun scripts/check-weather.ts` |
+| `make weather-import f=檔案.csv station=466920 name=臺北` | 匯入 CODiS 逐時 CSV 到 `weather_obs`（單日檔加 `date=2026-11-14`） | `Get-Content 檔案.csv \| docker compose exec -T app bun scripts/import-codis.ts --station 466920 --name 臺北` |
 | `make smoke` | 整合測試 MQTT → DB → API | `python tools/smoke_clothes.py`、`python tools/smoke_maps.py` |
 
 `make typecheck` 第一次執行時會把工具裝到 `~/.cache/iot-server-typecheck`。不用 `web/package.json` 裡的 vue-tsc 1.8，因為它和現在的 TypeScript 不相容。
@@ -218,8 +220,11 @@ Topic：`clothes/<id>/raw`，`<id>` 是衣夾自己的編號（ESP32 的 MAC，�
 | `GET /api/v1/clothes/airboxes` | 列出所有空氣盒子與是否連線（5 分鐘內有回報） |
 | `GET /api/v1/weather/counties` | 氣象署可選縣市與預設縣市 |
 | `GET /api/v1/weather/outdoor?county=臺北市` | 指定縣市的測站溫濕度中位數 |
+| `GET /api/v1/weather/detail?county=臺北市&district=中正區` | 行政區測站觀測＋縣市 36 小時預報。`rain_mm` 是**本日 0 時至今累積雨量**；現在的雨看 `rain_10min_mm`、`rain_1h_mm`（同站雨量計，沒有則為 null） |
+| `GET /api/v1/weather/stored?start=<ISO時間>&end=<ISO時間>` | 已存進 `weather_obs` 的設定測站觀測（預設最近 24 小時，最長 7 天），附 `poller` 狀態（最後執行、錯誤） |
 
-- CSV 欄位：`time_taipei,timestamp_utc,hx711_raw,ads1115_raw,touch_raw,air_temp_c,air_humi_pct`，讀取失敗的值為空白。
+- CSV 欄位：`time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct`，再接 13 個戶外欄位 `out_temp_c,out_humi_pct,out_wind_ms,out_wind_dir_deg,out_gust_ms,out_pressure_hpa,out_rain_10min_mm,out_rain_1h_mm,out_rain_day_mm,out_sunshine_h,out_sunshine_1h_h,out_radiation_1h_mj,out_uv`。讀取失敗或沒有資料的值為空白。
+- 戶外欄位取 `weather_obs` 裡設定測站「該筆衣夾資料當下或之前最近一筆有這個值的觀測」：10 分鐘資料（O-A0003、O-A0002）20 分鐘內有效，逐時資料（O-A0001、CODiS）70 分鐘內有效，超過就留空。
 - 空氣盒子溫溼度：`latest`、`history` 會附上 `air`；CSV 的 `air_temp_c`、`air_humi_pct` 取「該筆衣夾資料當下或之前、5 分鐘內最近一筆」空氣盒子讀值，超過 5 分鐘沒有讀值則留空。
 - 預設配對最近有回報的空氣盒子；可用 `.env` 的 `CLOTHES_AIRBOX_ID` 指定，或在 API 加 `?airbox=<device_id>`。
 - DB 無法讀取時回傳 503，不以假資料或記憶體資料冒充成功。
@@ -228,7 +233,24 @@ Topic：`clothes/<id>/raw`，`<id>` 是衣夾自己的編號（ESP32 的 MAC，�
 
 - 衣夾資料存在獨立的 `clothes_raw` 表；server 啟動時自動建立表與索引，也附上 `db/migrations/001_clothes_raw.sql`。原有空氣資料表與 MQTT topics 保留。
 - PostgreSQL 使用 Docker volume，重新啟動、切換開發／正式模式都會保留資料。
+- 戶外觀測存在 `weather_obs`（`db/migrations/011_weather_obs.sql`），見下一節。
 - 本機 5432 被其他程式佔用時，可臨時改 port：`POSTGRES_PORT=5433 make up`。
+
+### 戶外觀測（中央氣象署）
+
+後端啟動後每 5 分鐘向氣象署抓一次，把 `.env` 的 `CWA_STATION`（預設臺北站 466920）和 `CWA_RAIN_STATION` 存進 `weather_obs`，給 CSV 和預測訓練用。沒設定 `CWA_API_KEY` 時不會抓，app 日誌會警告。
+
+| 資料集 | 更新 | 存的欄位 |
+| --- | --- | --- |
+| O-A0003-001 署屬氣象站 | 每 10 分鐘 | 氣溫、濕度、風速風向、陣風、氣壓、今日累積雨量、日照時數 `sunshine_h`、紫外線 `uv`、天氣 |
+| O-A0001-001 自動氣象站 | 逐時 | 同上，沒有日照與紫外線 |
+| O-A0002-001 自動雨量站 | 每 10 分鐘 | `rain_10min_mm`、`rain_1h_mm`、`rain_day_mm` |
+| CODiS（手動匯入） | 逐時 | 該小時的雨量 `rain_1h_mm`、日照 `sunshine_1h_h`、全天空日射量 `radiation_1h_mj` 等 |
+
+- **開放資料 API 只給最新一筆，沒抓到的時段補不回來。** poller 開始之前（或停機期間）的資料，要到氣象署「氣候觀測資料查詢服務（CODiS）」下載測站的逐時 CSV，用 `make weather-import` 匯入；`name` 要和 `CWA_STATION` 一樣，CSV 才會配到。重複匯入會略過已有的時段。
+- 每一筆 API 資料都另存原始 JSON（`raw`），之後想多取欄位不用重抓。第一次設定好 `CWA_API_KEY` 後跑 `make weather-check`，確認解析結果不是 null；如果原始欄位有數字但解析是 null，改 `app/src/weather/cwa.ts` 的欄位路徑。
+- `sunshine_h` 照氣象署原值存（`SunshineDuration`）；它是當日累積還是區間值，請用存下來的資料確認後再當特徵用。CODiS 的 `sunshine_1h_h` 一定是該小時的值，兩者分開存。
+- 衣服晾在室內時，戶外測站的風和日照影響不大，溫濕度主要看空氣盒子；戶外資料對陽台、戶外晾衣才有意義。
 
 ## 專案結構
 

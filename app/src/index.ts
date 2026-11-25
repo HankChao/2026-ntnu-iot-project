@@ -24,6 +24,8 @@ import { ensureDryingSchema } from './clothes/drying';
 import { ensureFirmwareSchema } from './clothes/firmware';
 import { ensureResistanceSchema } from './clothes/resistance';
 import { ensureSettingsSchema } from './settings/store';
+import { ensureWeatherSchema } from './weather/store';
+import { startWeatherPoller } from './weather/poller';
 
 const app = new Hono();
 
@@ -82,6 +84,8 @@ async function bootstrap() {
   await ensureFirmwareSchema();
   await ensureResistanceSchema();
   await ensureSettingsSchema();
+  // Outdoor observations from CWA (weather_obs), stored for training next to the clip readings.
+  await ensureWeatherSchema();
 
   // 2. Initialize WebSocket Realtime Telemetry Broadcaster
   initWebSocketBroadcaster();
@@ -89,6 +93,9 @@ async function bootstrap() {
   // 3. Connect MQTT clients (telemetry subscriber & command publisher)
   mqttSubscriber.connect();
   mqttPublisher.connect();
+
+  // Store the configured CWA stations every 5 minutes (skipped, with a warning, without CWA_API_KEY).
+  startWeatherPoller();
 
   // 4. Register and initialize plugins (e.g. Discord Bot)
   pluginManager.register(discordPlugin);

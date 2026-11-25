@@ -9,7 +9,7 @@ TC_DIR      := $(HOME)/.cache/iot-server-typecheck
 
 .DEFAULT_GOAL := help
 .PHONY: help setup show check env-check dev dev-backend up down restart ps logs \
-        test test-app test-web typecheck sim seed smoke
+        test test-app test-web typecheck sim seed smoke weather-check weather-import
 
 help: ## 列出所有指令
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
@@ -68,6 +68,13 @@ sim: ## 送模擬衣夾資料（預設 60 筆，可用 make sim SIM_COUNT=10）�
 
 seed: ## 寫入示範資料（衣夾-02～06、衣物、晾衣紀錄，is_demo = true）；已經有就略過，需先啟動服務
 	$(COMPOSE) exec -T app bun scripts/seed-demo.ts
+
+weather-check: ## 用 .env 的 CWA_API_KEY 抓一次，印出設定測站解析後的值與原始欄位（不寫資料庫），需先啟動服務
+	$(COMPOSE) exec -T app bun scripts/check-weather.ts
+
+weather-import: ## 匯入 CODiS 逐時 CSV：make weather-import f=檔案.csv station=466920 name=臺北 [date=2026-11-14]
+	@test -n "$(f)" -a -n "$(station)" -a -n "$(name)" || { echo "用法：make weather-import f=檔案.csv station=466920 name=臺北 [date=YYYY-MM-DD]"; exit 1; }
+	$(COMPOSE) exec -T app bun scripts/import-codis.ts --station $(station) --name $(name) $(if $(date),--date $(date)) < $(f)
 
 smoke: ## 整合測試 MQTT → DB → API（需先啟動服務並建立 tools/config.json，會寫入測試資料）
 	@test -f tools/config.json || { echo "找不到 tools/config.json，請先複製 tools/config.example.json 並填好"; exit 1; }
