@@ -61,6 +61,7 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       CWA_API_KEY: ${CWA_API_KEY:-}
       CWA_STATION: ${CWA_STATION:-臺北}
+      CWA_RAIN_STATION: ${CWA_RAIN_STATION:-}
       PORT: 3000
     depends_on:
       mosquitto:

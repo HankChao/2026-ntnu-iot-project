@@ -1,28 +1,14 @@
 import { Hono } from 'hono';
+import { apiKey, CWA_BASE, loadObservations, loadRainfall, num, type Observation, type RainObservation } from '../weather/cwa';
+import { configuredStationIds, storedWeather, weatherState } from '../weather/store';
+import { weatherPoller } from '../weather/poller';
 
 export const weatherRoute = new Hono();
 
-const BASE = 'https://opendata.cwa.gov.tw/api/v1/rest/datastore';
-const OBSERVATION_DATASETS = ['O-A0001-001', 'O-A0003-001'];
 const FORECAST_DATASET = 'F-C0032-001';
-const OBSERVATION_TTL_MS = 10 * 60 * 1000;
 const FORECAST_TTL_MS = 30 * 60 * 1000;
 
-export interface Observation {
-  id: string;
-  name: string;
-  county: string;
-  town: string;
-  observed_at: string;
-  weather: string | null;
-  temp: number | null;
-  hum: number | null;
-  rain_mm: number | null;
-  wind_speed: number | null;
-  wind_direction: number | null;
-  gust_speed: number | null;
-  pressure: number | null;
-}
+export type { Observation };
 
 export interface ForecastPeriod {
   start: string;
@@ -35,13 +21,8 @@ export interface ForecastPeriod {
   comfort: string | null;
 }
 
-let observationCache: { at: number; map: Map<string, Observation> } | null = null;
 let forecastCache: { at: number; map: Map<string, ForecastPeriod[]> } | null = null;
 
-const num = (value: unknown): number | null => {
-  const parsed = Number(value);
-  return value == null || value === '' || !Number.isFinite(parsed) || parsed <= -99 ? null : parsed;
-};
 const round1 = (value: number | null) => (value === null ? null : Math.round(value * 10) / 10);
 const median = (values: number[]): number | null => {
   if (!values.length) return null;
@@ -55,53 +36,6 @@ const mode = (values: string[]): string | null => {
   for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
   return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]![0];
 };
-
-async function fetchObservationDataset(dataset: string, key: string): Promise<Observation[]> {
-  const params = new URLSearchParams({ Authorization: key, format: 'JSON' });
-  const response = await fetch(`${BASE}/${dataset}?${params}`, { signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`氣象署 ${dataset} HTTP ${response.status}`);
-  const json: any = await response.json();
-  const stations: any[] = json?.records?.Station ?? [];
-  return stations.map((station) => {
-    const weather = station.WeatherElement ?? {};
-    let humidity = num(weather.RelativeHumidity);
-    if (humidity !== null && humidity <= 1) humidity *= 100;
-    const weatherText = String(weather.Weather ?? '').trim();
-    return {
-      id: String(station.StationId ?? ''),
-      name: String(station.StationName ?? ''),
-      county: station.GeoInfo?.CountyName ?? station.CountyName ?? '其他',
-      town: station.GeoInfo?.TownName ?? station.TownName ?? '',
-      observed_at: station.ObsTime?.DateTime ?? '',
-      weather: weatherText && weatherText !== '-99' ? weatherText : null,
-      temp: num(weather.AirTemperature),
-      hum: humidity,
-      rain_mm: num(weather.Now?.Precipitation),
-      wind_speed: num(weather.WindSpeed),
-      wind_direction: num(weather.WindDirection),
-      gust_speed: num(weather.GustInfo?.PeakGustSpeed),
-      pressure: num(weather.AirPressure),
-    };
-  }).filter((station) => station.id && station.name);
-}
-
-async function loadObservations(): Promise<Map<string, Observation>> {
-  if (observationCache && Date.now() - observationCache.at < OBSERVATION_TTL_MS) return observationCache.map;
-  const key = process.env.CWA_API_KEY;
-  if (!key) throw new Error('後端未設定 CWA_API_KEY');
-  const results = await Promise.allSettled(OBSERVATION_DATASETS.map((dataset) => fetchObservationDataset(dataset, key)));
-  const map = new Map<string, Observation>();
-  for (const result of results) {
-    if (result.status === 'fulfilled') for (const observation of result.value) map.set(observation.id, observation);
-  }
-  if (map.size === 0) {
-    if (observationCache) return observationCache.map;
-    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
-    throw new Error(failed ? String(failed.reason?.message ?? failed.reason) : '氣象署沒有回傳測站');
-  }
-  observationCache = { at: Date.now(), map };
-  return map;
-}
 
 export function parseForecastLocation(location: any): ForecastPeriod[] {
   const periods = new Map<string, ForecastPeriod>();
@@ -138,11 +72,10 @@ export function parseForecastLocation(location: any): ForecastPeriod[] {
 
 async function loadForecasts(): Promise<Map<string, ForecastPeriod[]>> {
   if (forecastCache && Date.now() - forecastCache.at < FORECAST_TTL_MS) return forecastCache.map;
-  const key = process.env.CWA_API_KEY;
-  if (!key) throw new Error('後端未設定 CWA_API_KEY');
+  const key = apiKey();
   try {
     const params = new URLSearchParams({ Authorization: key, format: 'JSON' });
-    const response = await fetch(`${BASE}/${FORECAST_DATASET}?${params}`, { signal: AbortSignal.timeout(15000) });
+    const response = await fetch(`${CWA_BASE}/${FORECAST_DATASET}?${params}`, { signal: AbortSignal.timeout(15000) });
     if (!response.ok) throw new Error(`氣象署 ${FORECAST_DATASET} HTTP ${response.status}`);
     const json: any = await response.json();
     const map = new Map<string, ForecastPeriod[]>();
@@ -226,20 +159,43 @@ export function selectDistrictObservation(observations: Observation[], county: s
 const defaultStation = () => process.env.CWA_STATION || '臺北';
 const defaultCounty = (observations: Observation[]) => observations.find((item) => item.name === defaultStation())?.county;
 
+// rain_mm above is today's total since 00:00. Whether it is raining now comes from the rain gauges
+// (O-A0002-001): the last 10 minutes and the last hour. Null when the gauge data is unavailable.
+const NO_RAIN_NOW = { rain_10min_mm: null, rain_1h_mm: null } as const;
+const maxOf = (values: Array<number | null>) => {
+  const numbers = values.filter((value): value is number => value !== null);
+  return numbers.length ? round1(Math.max(...numbers)) : null;
+};
+
+export function rainForStation(gauges: RainObservation[], stationId: string) {
+  const gauge = gauges.find((item) => item.id === stationId);
+  return gauge ? { rain_10min_mm: round1(gauge.rain_10min_mm), rain_1h_mm: round1(gauge.rain_1h_mm) } : { ...NO_RAIN_NOW };
+}
+
+export function rainForCounty(gauges: RainObservation[], county: string) {
+  const selected = gauges.filter((item) => item.county === county);
+  if (!selected.length) return { ...NO_RAIN_NOW };
+  return { rain_10min_mm: maxOf(selected.map((item) => item.rain_10min_mm)), rain_1h_mm: maxOf(selected.map((item) => item.rain_1h_mm)) };
+}
+
+const gaugesOrNone = () => loadRainfall().catch(() => [] as RainObservation[]);
+
 async function countyCurrent(requested: string | undefined) {
-  const observationMap = await loadObservations();
+  const [observationMap, gauges] = await Promise.all([loadObservations(), gaugesOrNone()]);
   const observations = [...observationMap.values()];
   const county = requested || defaultCounty(observations);
   if (!county) return null;
-  return summarizeCounty(observations, county);
+  const summary = summarizeCounty(observations, county);
+  return summary && { ...summary, ...rainForCounty(gauges, county) };
 }
 
 async function districtCurrent(requestedCounty: string | undefined, requestedDistrict: string | undefined) {
-  const observationMap = await loadObservations();
+  const [observationMap, gauges] = await Promise.all([loadObservations(), gaugesOrNone()]);
   const observations = [...observationMap.values()];
   const county = requestedCounty || defaultCounty(observations);
   if (!county) return null;
-  return selectDistrictObservation(observations, county, requestedDistrict);
+  const selected = selectDistrictObservation(observations, county, requestedDistrict);
+  return selected && { ...selected, ...rainForStation(gauges, selected.station_id) };
 }
 
 async function countyDetail(requestedCounty: string | undefined, requestedDistrict: string | undefined) {
@@ -293,5 +249,30 @@ weatherRoute.get('/detail', async (context) => {
     return context.json({ success: true, data: detail });
   } catch (error) {
     return context.json({ success: false, error: (error as Error).message }, 502);
+  }
+});
+
+// ===== Stored observations (weather_obs) =====
+export const STORED_MAX_DAYS = 7;
+
+// What the poller has stored for the configured stations, in time order, and whether it is running.
+weatherRoute.get('/stored', async (context) => {
+  const now = new Date();
+  const startText = context.req.query('start');
+  const endText = context.req.query('end');
+  const start = startText === undefined ? new Date(now.getTime() - 24 * 60 * 60000) : new Date(startText);
+  const end = endText === undefined ? now : new Date(endText);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end ||
+      end.getTime() - start.getTime() > STORED_MAX_DAYS * 24 * 60 * 60000) {
+    return context.json({ success: false, error: `時間範圍最多 ${STORED_MAX_DAYS} 天，結束需晚於開始` }, 400);
+  }
+  const poller = { ...weatherPoller };
+  if (!weatherState.schemaReady) return context.json({ success: false, error: '資料庫無法讀取，戶外觀測紀錄暫時不可用', poller }, 503);
+  try {
+    const stationIds = await configuredStationIds();
+    const records = await storedWeather(stationIds, start, end);
+    return context.json({ success: true, start: start.toISOString(), end: end.toISOString(), station_ids: stationIds, records, poller });
+  } catch {
+    return context.json({ success: false, error: '資料庫無法讀取，戶外觀測紀錄暫時不可用', poller }, 503);
   }
 });

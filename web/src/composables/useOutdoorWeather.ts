@@ -10,7 +10,11 @@ export interface OutdoorWeather {
   weather: string | null;
   temp: number | null;
   hum: number | null;
+  /** 本日 0 時至今的累積雨量，不是現在的雨量 */
   rain_mm: number | null;
+  /** 雨量站（O-A0002-001）最近 10 分鐘、1 小時的雨量；這個測站沒有雨量站資料時為 null */
+  rain_10min_mm: number | null;
+  rain_1h_mm: number | null;
   wind_speed: number | null;
   wind_direction: number | null;
   gust_speed: number | null;
