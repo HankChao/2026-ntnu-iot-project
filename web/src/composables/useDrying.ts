@@ -5,6 +5,7 @@
 //
 // Module-level store: pages call useDrying() from setup; polling runs while one is mounted.
 import type { Divider } from '../utils/resistance';
+import type { Scale } from '../utils/weight';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { Material, StyleKey } from '../constants/garments';
 import type { Field } from './useClothesData';
@@ -35,6 +36,7 @@ export interface Clip {
   id: string; name: string; topic: string | null; demo: boolean; predictMethod: Field; airboxId: string | null;
   deviceId: string | null; online: boolean; latest: ClipReading | null;
   dividers: Divider[];  // divider resistor settings for showing the resistance in ohms (oldest first)
+  scales: Scale[];      // HX711 calibrations for showing the weight in grams (oldest first)
 }
 
 const MIN = 60000;
@@ -72,7 +74,7 @@ const ms = (value: string | null) => (value ? new Date(value).getTime() : 0);
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const toClip = (c: any): Clip => ({
   id: c.id, name: c.name, topic: c.topic, demo: c.is_demo, predictMethod: c.predict_method, airboxId: c.airbox_id,
-  deviceId: c.device_id ?? null, online: !!c.online, latest: c.latest ?? null, dividers: c.dividers ?? [],
+  deviceId: c.device_id ?? null, online: !!c.online, latest: c.latest ?? null, dividers: c.dividers ?? [], scales: c.scales ?? [],
 });
 const toGarment = (g: any): Garment => ({
   id: g.id, name: g.name, style: g.style, color: g.color, material: g.material, demo: g.is_demo, dryCount: g.dry_count ?? 0,
@@ -152,6 +154,10 @@ export const dryingApi = {
     write(`/clips/${encodeURIComponent(clipId)}/dividers`, 'POST', divider),
   deleteDivider: (clipId: string, dividerId: string) =>
     write(`/clips/${encodeURIComponent(clipId)}/dividers/${encodeURIComponent(dividerId)}`, 'DELETE'),
+  addScale: (clipId: string, scale: { since: string; tare_count: number; counts_per_gram: number }) =>
+    write(`/clips/${encodeURIComponent(clipId)}/scales`, 'POST', scale),
+  deleteScale: (clipId: string, scaleId: string) =>
+    write(`/clips/${encodeURIComponent(clipId)}/scales/${encodeURIComponent(scaleId)}`, 'DELETE'),
   resetDemo: () => write('/demo/reset', 'POST'),
 };
 

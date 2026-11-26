@@ -13,6 +13,7 @@ import { clothesLiveState, type Field } from './useClothesData';
 import { dryAtOf, dryingApi, dryingState, useDrying, type ClipReading, type Garment, type GarmentDraft, type RecordPatch, type Session } from './useDrying';
 import { loadSettings, saveSettings, useSettings } from './useSettings';
 import type { Divider } from '../utils/resistance';
+import type { Scale } from '../utils/weight';
 import { demoLatest, demoMoisture, type DemoSession } from '../utils/demoSensor';
 
 export type { DryRecord, Garment, GarmentDraft, RecordPatch, Session, SessionDetail } from './useDrying';
@@ -25,9 +26,10 @@ export interface ClipDevice {
   id: string; name: string; live: boolean; demo: boolean; topic: string; chip: string; ip: string | null; fw: string | null;
   deviceId: string | null; online: boolean; latest: ClipReading | null;  // real clips: from the server
   dividers: Divider[];
+  scales: Scale[];
   signal: '良好' | '偏弱'; bootMinAgo: number; offlineMinAgo: number | null; issue: string | null; lastBox: string;
 }
-type ClipLook = Omit<ClipDevice, 'id' | 'name' | 'live' | 'demo' | 'deviceId' | 'online' | 'latest' | 'dividers'>;
+type ClipLook = Omit<ClipDevice, 'id' | 'name' | 'live' | 'demo' | 'deviceId' | 'online' | 'latest' | 'dividers' | 'scales'>;
 
 // How each clip looks on the device page. Only 衣夾-01 is real; the rest is part of the demo.
 // Clip ids are UUIDs, so the demo looks are found by the demo clip's name.
@@ -117,7 +119,7 @@ function clipStatus(d: ClipDevice): ClipStatus {
 // Clips from the server, dressed with how they look. The server leaves demo clips out with the demo off.
 const devices = computed<ClipDevice[]>(() => clips.value.map((c) => ({
   ...(c.demo ? DEMO_LOOK[c.name] ?? PLAIN_DEMO_LOOK : { ...REAL_LOOK, topic: c.topic ?? '—' }),
-  id: c.id, name: c.name, live: !c.demo, demo: c.demo, deviceId: c.deviceId, online: c.online, latest: c.latest, dividers: c.dividers,
+  id: c.id, name: c.name, live: !c.demo, demo: c.demo, deviceId: c.deviceId, online: c.online, latest: c.latest, dividers: c.dividers, scales: c.scales,
 })));
 const clipById = (id: string) => devices.value.find((d) => d.id === id);
 // All sessions of a demo clip (drying and ended), for its simulated readings.
@@ -175,6 +177,9 @@ const removeDevice = (clipId: string) => attempt(() => dryingApi.removeClip(clip
 const addDivider = (clipId: string, divider: { since: string; divider_ohm: number; open_count: number }) =>
   attempt(() => dryingApi.addDivider(clipId, divider));
 const deleteDivider = (clipId: string, dividerId: string) => attempt(() => dryingApi.deleteDivider(clipId, dividerId));
+const addScale = (clipId: string, scale: { since: string; tare_count: number; counts_per_gram: number }) =>
+  attempt(() => dryingApi.addScale(clipId, scale));
+const deleteScale = (clipId: string, scaleId: string) => attempt(() => dryingApi.deleteScale(clipId, scaleId));
 const reset = () => attempt(() => dryingApi.resetDemo());
 function clearFocus() { focus.value = null; }
 
@@ -185,6 +190,6 @@ export function useClothesMock() {
   return {
     state, now, weather, devices, activeClipIds, busyGarmentIds, demoEnabled, actionError, loaded: dryingState.loaded, loadError: dryingState.loadError,
     garmentById, dryCount, predictMinutes, clipStatus, clipById, methodOf, garmentNameTaken, demoSessionsOf,
-    updateGarment, addGarment, deleteGarment, updateRecord, deleteRecord, swapGarment, startSession, endSession, setMethod, removeDevice, addDivider, deleteDivider, clearFocus, reset, setDemoEnabled,
+    updateGarment, addGarment, deleteGarment, updateRecord, deleteRecord, swapGarment, startSession, endSession, setMethod, removeDevice, addDivider, deleteDivider, addScale, deleteScale, clearFocus, reset, setDemoEnabled,
   };
 }

@@ -12,9 +12,12 @@
 // towards a dry fabric is extrapolated.
 import { DRYING_RUNS, TAU_STEP, type DryingRun } from '../constants/dryingRuns';
 import { ADS_INPUT_OHM, type Divider } from './resistance';
+import type { Scale } from './weight';
 
 const MIN = 60000;
 export const DEMO_DIVIDER_OHM = 1_000_000;
+// Counts per gram of the simulated load cell: the real 衣夾-01 measures 393.2 (11/25 calibration).
+export const DEMO_COUNTS_PER_GRAM = 393.2;
 const RTH = DEMO_DIVIDER_OHM * ADS_INPUT_OHM / (DEMO_DIVIDER_OHM + ADS_INPUT_OHM);
 
 export interface DemoSession { id: string; startedAt: number; totalMin: number; endedAt?: number | null; seed?: number | null }
@@ -139,4 +142,8 @@ export function demoLatest(clipId: string, sessions: DemoSession[], now = Date.n
 // The divider setting the simulated readings assume, so demo charts show ohms like the real clip.
 export function demoDividers(clipId: string): Divider[] {
   return [{ since: '2000-01-01T00:00:00Z', divider_ohm: DEMO_DIVIDER_OHM, open_count: clipProfile(stringSeed(clipId)).open }];
+}
+// The calibration the simulated readings assume: the empty clip's reading as tare, so demo charts show grams.
+export function demoScales(clipId: string): Scale[] {
+  return [{ since: '2000-01-01T00:00:00Z', tare_count: clipProfile(stringSeed(clipId)).base, counts_per_gram: DEMO_COUNTS_PER_GRAM }];
 }

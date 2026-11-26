@@ -7,6 +7,7 @@ import { mqttSubscriber } from '../mqtt/subscriber';
 import { dryingRoute } from './drying';
 import { firmwareRoute } from './firmware';
 import { clipDividers, countToOhm, dividerAt, type Divider } from '../clothes/resistance';
+import { clipScales, countToGram, scaleAt, type Scale } from '../clothes/weight';
 
 export { CLIP_STALE_MS };
 export const clothesRoute = new Hono();
@@ -84,9 +85,12 @@ clothesRoute.get('/export', async (c) => {
   const clipId = await optional(() => clipOf(c.req.query('clip')));
   const pages = clothesExportRows(start, end, 5000, airboxId, clipId);
   const dividers: Divider[] = clipId ? await optional(() => clipDividers(clipId)) ?? [] : [];
+  const scales: Scale[] = clipId ? await optional(() => clipScales(clipId)) ?? [] : [];
   const line = (row: CsvRow) => {
-    const divider = dividerAt(dividers, new Date(row.timestamp).getTime());
-    return clothesCsvLine({ ...row, ads1115_ohm: divider ? countToOhm(row.ads1115_raw, divider) : null });
+    const time = new Date(row.timestamp).getTime();
+    const divider = dividerAt(dividers, time), scale = scaleAt(scales, time);
+    return clothesCsvLine({ ...row, ads1115_ohm: divider ? countToOhm(row.ads1115_raw, divider) : null,
+      hx711_g: scale ? countToGram(row.hx711_raw, scale) : null });
   };
   let first: IteratorResult<CsvRow[], void>;
   try { first = await pages.next(); } catch {

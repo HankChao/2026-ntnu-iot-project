@@ -6,9 +6,11 @@
     </div>
     <p v-if="latest && latest[s.key] === null" class="wa-tx small">本筆讀取失敗</p>
     <div class="chart" :class="{ selectable }" :title="selectable ? '按住拖曳可選取時段' : undefined">
-      <Line :data="chartDatasets[s.key]" :options="ohm(s.key) ? ohmChartOptions : chartOptions" :plugins="plugins" />
+      <Line :data="chartDatasets[s.key]" :options="ohm(s.key) ? ohmChartOptions : gram(s.key) ? gramChartOptions : chartOptions" :plugins="plugins" />
     </div>
-    <span v-if="ohm(s.key)" class="muted small">由 ADS1115 讀值換算（{{ dividerNote }}）· 對數刻度 · 原始讀值 {{ formatRaw(latest?.ads1115_raw) }}</span>
+    <span v-if="gram(s.key)" class="muted small">由 HX711 讀值換算（{{ scaleNote }}）· 原始讀值 {{ formatRaw(latest?.hx711_raw) }}</span>
+    <span v-else-if="s.key === 'hx711_raw'" class="muted small">{{ s.key }} · {{ s.description }} · 還沒設定重量校正，所以顯示原始計數</span>
+    <span v-else-if="ohm(s.key)" class="muted small">由 ADS1115 讀值換算（{{ dividerNote }}）· 對數刻度 · 原始讀值 {{ formatRaw(latest?.ads1115_raw) }}</span>
     <span v-else-if="s.key === 'ads1115_raw'" class="muted small">{{ s.key }} · {{ s.description }} · 還沒設定分壓電阻，所以顯示原始計數</span>
     <span v-else class="muted small">{{ s.key }} · {{ s.description }}</span>
   </section>
@@ -34,6 +36,7 @@ import { useTheme } from '../../composables/useTheme';
 import { SENSORS, type AirReading, type Field, type Reading, type Sensor } from '../../composables/useClothesData';
 import { formatAir, formatRaw, formatTime } from '../../utils/format';
 import { countToOhm, dividerAt, formatOhm, ohmMax, type Divider } from '../../utils/resistance';
+import { countToGram, formatGram, scaleAt, type Scale } from '../../utils/weight';
 
 ChartJS.register(LinearScale, LogarithmicScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -50,7 +53,9 @@ const props = withDefaults(defineProps<{
   plugins?: Plugin<'line'>[];
   // The clip's divider settings: with any, the resistance chart shows ohms on a log scale.
   dividers?: Divider[] | null;
-}>(), { bucketSeconds: 0, sensors: () => SENSORS, chosen: undefined, latest: undefined, airDeviceId: null, plugins: () => [], dividers: null });
+  // The clip's HX711 calibrations: with any, the weight chart shows grams.
+  scales?: Scale[] | null;
+}>(), { bucketSeconds: 0, sensors: () => SENSORS, chosen: undefined, latest: undefined, airDeviceId: null, plugins: () => [], dividers: null, scales: null });
 
 const { palette } = useTheme();
 const selectable = computed(() => props.plugins.length > 0);
@@ -88,6 +93,22 @@ const dividerNote = computed(() => {
   });
   return `${parts.join('；')}；超過上限時顯示為上限`;
 });
+// ---------------------------------------------------------------- weight in grams
+const gram = (key: Field) => key === 'hx711_raw' && !!props.scales?.length;
+const scaleNote = computed(() => {
+  const list = props.scales ?? [];
+  const start = props.range.start.getTime(), end = props.range.end.getTime();
+  const used = list.filter((s, i) => new Date(s.since).getTime() < end && (i + 1 >= list.length || new Date(list[i + 1].since).getTime() > start));
+  const describe = (s: Scale) => `空勾 ${s.tare_count.toLocaleString()}、每克 ${s.counts_per_gram}`;
+  const parts = used.map((s) => describe(s));
+  if (list.length && new Date(list[0].since).getTime() > start) parts.unshift(`${shortTime(new Date(list[0].since).getTime())} 前沒有校正，不換算`);
+  return parts.join('；');
+});
+const plotGram = (count: number | null, time: number) => {
+  const s = scaleAt(props.scales, time);
+  return s ? countToGram(count, s) : null;
+};
+
 // Plotted value: ohms with the setting in force at that time; open readings sit at that setting's
 // upper limit (shown as "> limit"); nothing before the first setting.
 function plotOhm(count: number | null, time: number): number | null {
@@ -106,7 +127,8 @@ function chartData(sensor: Sensor) {
   for (const record of props.records) {
     const time = new Date(record.timestamp).getTime();
     if (previous !== undefined && time - previous > gapMs) points.push({ x: previous + 1, y: null });
-    points.push({ x: time, y: ohm(sensor.key) ? plotOhm(record[sensor.key], time) : record[sensor.key] });
+    const raw = record[sensor.key];
+    points.push({ x: time, y: ohm(sensor.key) ? plotOhm(raw, time) : gram(sensor.key) ? plotGram(raw, time) : raw });
     previous = time;
   }
   const color = palette.value[sensor.color];
@@ -138,6 +160,24 @@ const ohmChartOptions = computed<ChartOptions<'line'>>(() => {
           const v = Number(value);
           return /^[1]$/.test(String(v / 10 ** Math.floor(Math.log10(v)))) ? formatOhm(v) : '';
         } },
+        grid: { color: p.grid }, border: { color: p.bd } },
+    },
+  };
+});
+
+// The weight chart in grams (linear, like the raw counts).
+const gramChartOptions = computed<ChartOptions<'line'>>(() => {
+  const p = palette.value;
+  const base = chartOptions.value;
+  return {
+    ...base,
+    plugins: { ...base.plugins, tooltip: { backgroundColor: p.tooltip, callbacks: {
+      title: (items) => items.length && items[0].parsed.x != null ? formatTime(items[0].parsed.x) : '',
+      label: (item) => item.parsed.y == null ? '' : `重量 ${formatGram(item.parsed.y)}`,
+    } } },
+    scales: {
+      x: base.scales!.x!,
+      y: { title: { display: true, text: '重量（g）', color: p.mu }, ticks: { color: p.mu, callback: (value) => formatGram(Number(value)) },
         grid: { color: p.grid }, border: { color: p.bd } },
     },
   };
