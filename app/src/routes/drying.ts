@@ -7,6 +7,7 @@ import {
 } from '../clothes/drying';
 import { resetDemoData } from '../clothes/demo';
 import { addDivider, deleteDivider, parseDivider } from '../clothes/resistance';
+import { addScale, deleteScale, parseScale } from '../clothes/weight';
 import { clothesAirboxId } from '../clothes/store';
 
 export const dryingRoute = new Hono();
@@ -51,6 +52,15 @@ dryingRoute.post('/clips/:id/dividers', (c) => handle(c, '資料庫無法寫入�
 
 dryingRoute.delete('/clips/:id/dividers/:dividerId', (c) => handle(c, '資料庫無法寫入，分壓電阻設定沒有刪除', async () =>
   c.json({ success: true, dividers: await deleteDivider(c.req.param('id'), c.req.param('dividerId')) })));
+
+// HX711 calibration (empty-hook reading and counts per gram), used to show the weight in grams.
+dryingRoute.post('/clips/:id/scales', (c) => handle(c, '資料庫無法寫入，重量校正沒有儲存', async () => {
+  const scale = parseScale(await jsonBody(c), new Date());
+  return c.json({ success: true, scales: await addScale(c.req.param('id'), scale) }, 201);
+}));
+
+dryingRoute.delete('/clips/:id/scales/:scaleId', (c) => handle(c, '資料庫無法寫入，重量校正沒有刪除', async () =>
+  c.json({ success: true, scales: await deleteScale(c.req.param('id'), c.req.param('scaleId')) })));
 
 // Only demo clips can be removed (with their demo sessions).
 dryingRoute.delete('/clips/:id', (c) => handle(c, '資料庫無法寫入，衣夾沒有移除', async () => {

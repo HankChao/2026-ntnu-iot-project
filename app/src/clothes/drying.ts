@@ -396,6 +396,8 @@ export async function listClips(includeDemo = false) {
   const active = await selectSessions(sql, 'active', undefined, includeDemo);
   // Divider settings for converting the ADS1115 reading to ohms (resistance.ts); none on a fresh clip.
   const dividers = await sql`SELECT id, clip_id, since, divider_ohm, open_count FROM clip_dividers ORDER BY since`.catch(() => []);
+  // HX711 calibration for showing the weight in grams (weight.ts); none on a fresh clip.
+  const scales = await sql`SELECT id, clip_id, since, tare_count, counts_per_gram FROM clip_scales ORDER BY since`.catch(() => []);
   const now = Date.now();
   return clips.map((clip: any) => {
     // Demo clips never report; the front end simulates their state.
@@ -406,6 +408,8 @@ export async function listClips(includeDemo = false) {
       ...rest,
       dividers: dividers.filter((d: any) => d.clip_id === clip.id)
         .map((d: any) => ({ id: d.id, since: d.since, divider_ohm: d.divider_ohm, open_count: d.open_count })),
+      scales: scales.filter((s: any) => s.clip_id === clip.id)
+        .map((s: any) => ({ id: s.id, since: s.since, tare_count: s.tare_count, counts_per_gram: Number(s.counts_per_gram) })),
       latest: last && { timestamp: last.timestamp, hx711_raw: last.hx711_raw, ads1115_raw: last.ads1115_raw, touch_raw: last.touch_raw },
       // Where the clip publishes: its own topic, or the shared one of firmware before 0.5.0.
       topic: clip.device_id ? clipTopic(clip.device_id, 'raw') : clip.id === firstReal ? LEGACY_TOPIC : null,

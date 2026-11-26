@@ -23,6 +23,7 @@ import { ensureClothesSchema } from './clothes/store';
 import { ensureDryingSchema } from './clothes/drying';
 import { ensureFirmwareSchema } from './clothes/firmware';
 import { ensureResistanceSchema } from './clothes/resistance';
+import { ensureWeightSchema } from './clothes/weight';
 import { ensureSettingsSchema } from './settings/store';
 
 const app = new Hono();
@@ -81,6 +82,7 @@ async function bootstrap() {
   await ensureDryingSchema();
   await ensureFirmwareSchema();
   await ensureResistanceSchema();
+  await ensureWeightSchema();
   await ensureSettingsSchema();
 
   // 2. Initialize WebSocket Realtime Telemetry Broadcaster

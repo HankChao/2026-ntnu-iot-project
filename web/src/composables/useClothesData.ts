@@ -14,7 +14,7 @@ export type SensorKind = 'm1' | 'wa' | 'm3';
 export type Sensor = { key: Field; title: string; method: string; hardware: string; color: SensorKind; description: string };
 
 export const SENSORS: Sensor[] = [
-  { key: 'hx711_raw', title: '重量感測', method: '重量法', hardware: 'HX711', color: 'm1', description: 'GPIO4 / GPIO5 · 尚未換算公克' },
+  { key: 'hx711_raw', title: '重量感測', method: '重量法', hardware: 'HX711', color: 'm1', description: 'GPIO4 / GPIO5' },
   { key: 'ads1115_raw', title: '電阻感測', method: '電阻法', hardware: 'ADS1115', color: 'wa', description: 'A0 通道 · 原始 ADC 讀值' },
   { key: 'touch_raw', title: '電容感測', method: '電容法', hardware: 'ESP32-S3 Touch', color: 'm3', description: 'GPIO10 · 原始 touch 讀值' },
 ];

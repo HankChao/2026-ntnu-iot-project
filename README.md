@@ -219,7 +219,8 @@ Topic：`clothes/<id>/raw`，`<id>` 是衣夾自己的編號（ESP32 的 MAC，�
 | `GET /api/v1/weather/counties` | 氣象署可選縣市與預設縣市 |
 | `GET /api/v1/weather/outdoor?county=臺北市` | 指定縣市的測站溫濕度中位數 |
 
-- CSV 欄位：`time_taipei,timestamp_utc,hx711_raw,ads1115_raw,touch_raw,air_temp_c,air_humi_pct`，讀取失敗的值為空白。
+- CSV 欄位：`time_taipei,timestamp_utc,hx711_raw,hx711_g,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct`，讀取失敗的值為空白。`hx711_g`（公克）和 `ads1115_ohm`（歐姆）是換算值，還沒設定重量校正或分壓電阻的時段留空。
+- 換算公式：重量 g = (hx711_raw − 空勾讀值) ÷ 每克讀值；電阻 Rx = (R ∥ R_in) × ads1115_raw ÷ (開路讀值 − ads1115_raw)。說明和衣夾-01 的校正數值見 [docs/SENSOR-FORMULAS.md](docs/SENSOR-FORMULAS.md)。
 - 空氣盒子溫溼度：`latest`、`history` 會附上 `air`；CSV 的 `air_temp_c`、`air_humi_pct` 取「該筆衣夾資料當下或之前、5 分鐘內最近一筆」空氣盒子讀值，超過 5 分鐘沒有讀值則留空。
 - 預設配對最近有回報的空氣盒子；可用 `.env` 的 `CLOTHES_AIRBOX_ID` 指定，或在 API 加 `?airbox=<device_id>`。
 - DB 無法讀取時回傳 503，不以假資料或記憶體資料冒充成功。
@@ -245,7 +246,7 @@ Topic：`clothes/<id>/raw`，`<id>` 是衣夾自己的編號（ESP32 的 MAC，�
 | `firmware/esp32-s3/` | 感測器與 MQTT 韌體 |
 | `scripts/` | `setup.sh`／`setup.ps1`：建立 `.env`、MQTT 帳密、TLS |
 | `tools/` | 整合測試與 MQTT／設定頁驗證工具，見 [tools/README.md](tools/README.md) |
-| `docs/` | [MQTT 設定](docs/MQTT.md)、[上游說明](docs/MAPS-UPSTREAM.md) |
+| `docs/` | [MQTT 設定](docs/MQTT.md)、[感測值換算公式](docs/SENSOR-FORMULAS.md)、[上游說明](docs/MAPS-UPSTREAM.md) |
 | `docker-compose.yml` | 正式模式 |
 | `docker-compose.dev.yml` | 開發模式疊加檔 |
 | `Makefile` | 常用指令 |

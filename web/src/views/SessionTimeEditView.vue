@@ -45,7 +45,8 @@
           </div>
           <RawCharts v-else :records="history.records" :air-records="history.air" :range="win" :stale-after-ms="history.staleAfterMs"
             :bucket-seconds="history.bucketSeconds" :air-device-id="history.airDeviceId" :plugins="[selectPlugin]"
-            :dividers="detail.demo ? demoDividers(detail.clipId) : mock.clipById(detail.clipId)?.dividers" />
+            :dividers="detail.demo ? demoDividers(detail.clipId) : mock.clipById(detail.clipId)?.dividers"
+            :scales="detail.demo ? demoScales(detail.clipId) : mock.clipById(detail.clipId)?.scales" />
         </template>
       </div>
 
@@ -78,7 +79,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import DemoTag from '../components/clothes/DemoTag.vue';
 import RawCharts from '../components/clothes/RawCharts.vue';
-import { demoDividers, demoHistory } from '../utils/demoSensor';
+import { demoDividers, demoHistory, demoScales } from '../utils/demoSensor';
 import { HISTORY_MAX_MS, fetchRawHistory, type RawHistory } from '../composables/useClothesData';
 import { useClothesMock, type SessionDetail } from '../composables/useClothesMock';
 import { dryingApi } from '../composables/useDrying';

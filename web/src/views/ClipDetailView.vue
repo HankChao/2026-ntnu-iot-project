@@ -65,7 +65,7 @@
           <template v-else>
             <RawCharts :records="shown.records" :air-records="shown.air" :range="range" :stale-after-ms="staleAfterMs" :bucket-seconds="shown.bucket"
               :sensors="orderedSensors" :chosen="method" :latest="shown.latest" :air-device-id="device.demo ? null : air?.device_id" :plugins="[selectPlugin]"
-              :dividers="shown.dividers" />
+              :dividers="shown.dividers" :scales="shown.scales" />
           </template>
 
           <p class="muted small">
@@ -88,10 +88,49 @@
           <section v-else class="panel panel--sm">
             <h2>匯出原始資料</h2>
             <p class="muted small">匯出歷史曲線目前的時間範圍：<b class="tx">{{ exportRangeText }}</b>。要匯出其他時段，先在左邊換時間範圍或拖曳放大。</p>
-            <p class="muted small">原始資料（不平均），附電阻歐姆值與空氣盒子溫濕度，台北時間。</p>
+            <p class="muted small">原始資料（不平均），附重量公克、電阻歐姆值與空氣盒子溫濕度，台北時間。</p>
             <button type="button" class="ui-btn ui-btn--primary" :disabled="exporting" @click="downloadCsv">{{ exporting ? '匯出中…' : '下載 CSV' }}</button>
             <p v-if="exportMessage" class="small" :class="exportFailed ? 'err' : 'ac-tx'" role="status">{{ exportMessage }}</p>
           </section>
+
+          <form v-if="!device.demo" class="panel panel--sm" @submit.prevent="saveScale">
+            <h2>重量校正</h2>
+            <template v-if="currentScale">
+              <dl class="kv">
+                <div><dt>空勾讀值</dt><dd class="mono">{{ currentScale.tare_count.toLocaleString() }}</dd></div>
+                <div><dt>每克讀值</dt><dd class="mono">{{ currentScale.counts_per_gram }}</dd></div>
+                <div><dt>現在重量</dt><dd>{{ latestGram ?? '—' }}</dd></div>
+                <div><dt>生效時間</dt><dd>{{ formatTime(currentScale.since) }}</dd></div>
+              </dl>
+            </template>
+            <p v-else class="ui-note">還沒校正，重量先以原始計數顯示。空勾時記下讀值，再掛一個知道重量的東西，就會換算成公克。</p>
+            <details :open="!currentScale">
+              <summary>{{ currentScale ? '重新校正？新增一筆設定' : '設定重量校正' }}</summary>
+              <div class="ui-field"><label for="sc-tare">空勾讀值（什麼都沒掛）</label>
+                <input id="sc-tare" v-model.number="scaleTare" class="ui-input ui-input--sm" type="number" step="1" required /></div>
+              <button type="button" class="ui-btn ui-btn--ghost" :disabled="latest?.hx711_raw == null" @click="scaleTare = latest?.hx711_raw ?? scaleTare">用最新讀值（{{ formatRaw(latest?.hx711_raw) }}）</button>
+              <div class="ui-field"><label for="sc-per">每克讀值</label>
+                <input id="sc-per" v-model.number="scalePerGram" class="ui-input ui-input--sm" type="number" step="any" required /></div>
+              <div class="known">
+                <div class="ui-field"><label for="sc-known">或：掛上已知重量（g）</label>
+                  <input id="sc-known" v-model.number="knownGram" class="ui-input ui-input--sm" type="number" min="1" step="any" /></div>
+                <button type="button" class="ui-btn ui-btn--ghost" :disabled="!canComputePerGram" @click="computePerGram">用最新讀值算每克讀值</button>
+              </div>
+              <p class="muted small">重量 = (讀值 − 空勾讀值) ÷ 每克讀值。掛好已知重量、等下一筆讀值進來後再按「用最新讀值算」。</p>
+              <div class="ui-field"><label for="sc-since">從什麼時候開始（台北）</label><input id="sc-since" v-model="scaleSince" class="ui-input ui-input--sm" type="datetime-local" required /></div>
+              <p class="muted small">之前的資料仍用舊設定換算。換了掛勾或重新校正，請把時間設在那個時候。</p>
+              <button type="submit" class="ui-btn ui-btn--primary" :disabled="savingScale">{{ savingScale ? '儲存中…' : '儲存設定' }}</button>
+            </details>
+            <details v-if="device.scales.length">
+              <summary>設定紀錄（{{ device.scales.length }}）</summary>
+              <ul class="dividers">
+                <li v-for="s in [...device.scales].reverse()" :key="s.id">
+                  <span>{{ formatTime(s.since) }} 起 · 空勾 {{ s.tare_count.toLocaleString() }} · 每克 {{ s.counts_per_gram }}</span>
+                  <button type="button" class="ui-btn ui-btn--ghost" @click="removeScale(s)">刪除</button>
+                </li>
+              </ul>
+            </details>
+          </form>
 
           <form v-if="!device.demo" class="panel panel--sm" @submit.prevent="saveDivider">
             <h2>電阻換算</h2>
@@ -155,7 +194,8 @@ import { useClothesMock, type Method } from '../composables/useClothesMock';
 import { apiFetch } from '../composables/useAuth';
 import { agoText, formatRaw, formatTime, fromTaipeiInput, toTaipeiInput } from '../utils/format';
 import { dividerAt, formatOhm, ohmMax, type Divider } from '../utils/resistance';
-import { demoDividers, demoHistory, demoLatest } from '../utils/demoSensor';
+import { gramText, scaleAt, type Scale } from '../utils/weight';
+import { demoDividers, demoHistory, demoLatest, demoScales } from '../utils/demoSensor';
 
 const route = useRoute();
 const mock = useClothesMock();
@@ -184,9 +224,9 @@ const shown = computed(() => {
   if (d?.demo) {
     const sessions = mock.demoSessionsOf(d.id);
     const sim = demoHistory(d.id, sessions, range.value.start.getTime(), range.value.end.getTime(), mock.now.value);
-    return { records: sim.records, air: [], bucket: sim.bucketSeconds, latest: demoLatest(d.id, sessions, mock.now.value), dividers: demoDividers(d.id) };
+    return { records: sim.records, air: [], bucket: sim.bucketSeconds, latest: demoLatest(d.id, sessions, mock.now.value), dividers: demoDividers(d.id), scales: demoScales(d.id) };
   }
-  return { records: records.value, air: airRecords.value, bucket: bucketSeconds.value, latest: latest.value, dividers: d?.dividers ?? [] };
+  return { records: records.value, air: airRecords.value, bucket: bucketSeconds.value, latest: latest.value, dividers: d?.dividers ?? [], scales: d?.scales ?? [] };
 });
 const latestJson = computed(() => {
   const r = shown.value.latest;
@@ -252,6 +292,39 @@ async function zoomToSelection() {
   applyCustom();
 }
 
+// ---------------------------------------------------------------- weight calibration
+// grams = (count − tare) / counts per gram; each setting applies from its time on, like the divider.
+const currentScale = computed(() => device.value ? scaleAt(device.value.scales, Date.now()) : null);
+const latestGram = computed(() => latest.value ? gramText(latest.value.hx711_raw, new Date(latest.value.timestamp).getTime(), device.value?.scales) : null);
+const scaleTare = ref<number>(0);
+const scalePerGram = ref<number>(400);
+const knownGram = ref<number | null>(null);
+const scaleSince = ref(toTaipeiInput(new Date()));
+const savingScale = ref(false);
+watch(currentScale, (s) => {
+  if (s) { scaleTare.value = s.tare_count; scalePerGram.value = s.counts_per_gram; }
+}, { immediate: true });
+const canComputePerGram = computed(() => latest.value?.hx711_raw != null && !!knownGram.value && knownGram.value > 0 &&
+  latest.value.hx711_raw !== scaleTare.value);
+function computePerGram() {
+  const count = latest.value?.hx711_raw;
+  if (count == null || !knownGram.value) return;
+  scalePerGram.value = Math.round((count - scaleTare.value) / knownGram.value * 10) / 10;
+}
+async function saveScale() {
+  if (!device.value) return;
+  savingScale.value = true;
+  await mock.addScale(device.value.id, {
+    since: fromTaipeiInput(scaleSince.value).toISOString(), tare_count: Math.round(scaleTare.value), counts_per_gram: scalePerGram.value,
+  });
+  savingScale.value = false;
+  scaleSince.value = toTaipeiInput(new Date());
+}
+function removeScale(s: Scale) {
+  if (!device.value || !s.id) return;
+  if (window.confirm(`刪除 ${formatTime(s.since)} 起的重量校正？這段時間的資料會改用前一筆設定換算。`)) void mock.deleteScale(device.value.id, s.id);
+}
+
 // ---------------------------------------------------------------- resistance divider
 // Settings live on the server per clip; each applies from its time on, so old data keeps its resistor.
 const currentDivider = computed(() => device.value ? dividerAt(device.value.dividers, Date.now()) : null);
@@ -298,6 +371,8 @@ function removeDivider(d: Divider) {
 .inline-form .ui-field { flex: 1 1 200px; }
 .hint { font-size: 0.875rem; }
 .dividers { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.875rem; }
+.known { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.known .ui-field { flex: 1 1 160px; margin-bottom: 0; }
 .dividers li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 details { display: flex; flex-direction: column; gap: 10px; }
 details > summary { cursor: pointer; color: var(--tx2); font-size: 0.9375rem; }

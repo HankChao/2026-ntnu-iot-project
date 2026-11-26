@@ -51,7 +51,8 @@
         </div>
         <RawCharts v-else-if="history" :records="history.records" :air-records="history.air" :range="chartRange"
           :stale-after-ms="history.staleAfterMs" :bucket-seconds="history.bucketSeconds" :air-device-id="history.airDeviceId"
-          :dividers="detail.demo ? demoDividers(detail.clipId) : clip?.dividers" />
+          :dividers="detail.demo ? demoDividers(detail.clipId) : clip?.dividers"
+          :scales="detail.demo ? demoScales(detail.clipId) : clip?.scales" />
       </div>
 
       <aside class="side-col">
@@ -89,7 +90,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import DemoTag from '../components/clothes/DemoTag.vue';
 import RawCharts from '../components/clothes/RawCharts.vue';
-import { demoDividers, demoHistory } from '../utils/demoSensor';
+import { demoDividers, demoHistory, demoScales } from '../utils/demoSensor';
 import { SHAPES } from '../constants/garments';
 import { HISTORY_MAX_MS, downloadRawCsv, fetchRawHistory, type RawHistory } from '../composables/useClothesData';
 import { useClothesMock, type SessionDetail } from '../composables/useClothesMock';

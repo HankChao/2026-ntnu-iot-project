@@ -40,15 +40,17 @@ describe('Clothes MQTT contract', () => {
     }
   });
   it('writes CSV lines in Taipei and UTC time with empty cells for failed reads', () => {
-    expect(CSV_HEADER).toBe('time_taipei,timestamp_utc,hx711_raw,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct\n');
+    expect(CSV_HEADER).toBe('time_taipei,timestamp_utc,hx711_raw,hx711_g,ads1115_raw,ads1115_ohm,touch_raw,air_temp_c,air_humi_pct\n');
     expect(clothesCsvLine({ id: '1', timestamp: new Date('2026-11-13T17:15:53.250Z'), hx711_raw: -1500, ads1115_raw: null, touch_raw: 0 }))
-      .toBe('2026-11-14 01:15:53.250,2026-11-13T17:15:53.250Z,-1500,,,0,,\n');
+      .toBe('2026-11-14 01:15:53.250,2026-11-13T17:15:53.250Z,-1500,,,,0,,\n');
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 2, touch_raw: 3, air_temp: 24.5, air_humi: 61.25 }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,2,,3,24.5,61.25\n');
+      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,,2,,3,24.5,61.25\n');
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 5000, touch_raw: 3, ads1115_ohm: 245123.6 }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,5000,245124,3,,\n');
+      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,,5000,245124,3,,\n');
     expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 1, ads1115_raw: 22740, touch_raw: 3, ads1115_ohm: Infinity }))
-      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,22740,,3,,\n');
+      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,1,,22740,,3,,\n');
+    expect(clothesCsvLine({ id: '1', timestamp: '2026-11-13T17:15:53Z', hx711_raw: 169540, ads1115_raw: 2, touch_raw: 3, hx711_g: 162.0153 }))
+      .toBe('2026-11-14 01:15:53.000,2026-11-13T17:15:53.000Z,169540,162.0,2,,3,,\n');
   });
   it('pairs each clip reading with the latest air reading no older than 5 minutes', () => {
     const t = (minutes: number) => new Date(Date.UTC(2026, 10, 14, 0, 0) + minutes * 60000).toISOString();

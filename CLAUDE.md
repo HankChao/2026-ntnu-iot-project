@@ -9,7 +9,7 @@ ESP32 智慧衣夾 → MQTT → 後端加上收到時間 → PostgreSQL → 網�
 | 目錄 | 內容 |
 | --- | --- |
 | `app/` | 後端：Bun + Hono + `Bun.sql`（PostgreSQL）+ mqtt.js。入口 `app/src/index.ts` |
-| `app/src/clothes/` | 衣夾資料：`validation.ts`（MQTT 內容檢查）、`ingest.ts`、`store.ts`（建表、查詢、CSV、空氣盒子對應）、`drying.ts`（衣夾設定、衣物庫、晾衣）、`prediction.ts`（乾燥預測）、`demo.ts`（示範資料內容、`make seed`、重設） |
+| `app/src/clothes/` | 衣夾資料：`validation.ts`（MQTT 內容檢查）、`ingest.ts`、`store.ts`（建表、查詢、CSV、空氣盒子對應）、`drying.ts`（衣夾設定、衣物庫、晾衣）、`prediction.ts`（乾燥預測）、`weight.ts`／`resistance.ts`（重量公克、布料電阻換算）、`demo.ts`（示範資料內容、`make seed`、重設） |
 | `app/src/settings/` | 全站設定 `app_settings`（key → JSON，白名單在 `SETTING_DEFS`） |
 | `app/src/routes/` | API，掛在 `/api/v1`。衣夾相關的在 `clothes.ts`、`drying.ts`，全站設定在 `settings.ts` |
 | `app/src/mqtt/subscriber.ts` | 訂閱 `MAPS/+/sensor`、`MAPS/+/status`、`MAPS/+/online`、`clothes/+/raw`、`clothes/+/fw` |
@@ -43,6 +43,8 @@ ESP32 智慧衣夾 → MQTT → 後端加上收到時間 → PostgreSQL → 網�
   - 空氣盒子的 id 維持 MAC（盒子用它發 MQTT），但名稱 `display_name` 也不能重複。
 - 衣夾設定：`GET /clips`、`PATCH /clips/:id`（`name`、`airbox_id`、`predict_method`）、`DELETE /clips/:id`（只能刪示範衣夾）。`clips.device_id` 是衣夾的裝置 id；API 回的 `topic`、`online`、`last_reading`、`latest`（最新一筆讀值）都是每支衣夾各自的。`clothes_raw.clip_id` 記每筆讀值是哪支衣夾的，`/latest`、`/history`、`/export` 用 `?clip=` 選衣夾（預設第一支實體衣夾）。
 - 電阻換算（`resistance.ts`，表 `clip_dividers`）：衣夾照樣只送 ADS1115 原始計數，換成歐姆時用「分壓電阻」和「開路讀值」（兩電極之間什麼都沒夾時的讀值）。`Rx = (R ∥ R_in) · count / (open − count)`，`R_in` 是 ADS1115 的輸入阻抗（6.6 MΩ）；讀值超過開路的 97% 算開路，顯示「> 上限」。每筆設定有生效時間 `since`，舊資料用當時的電阻換算。`/clips` 回 `dividers`；`POST /clips/:id/dividers`（`divider_ohm`、`open_count`、`since`，只限實體衣夾）、`DELETE /clips/:id/dividers/:dividerId`。CSV 多一欄 `ads1115_ohm`（沒設定或開路時留空）。前端的同一份公式在 `web/src/utils/resistance.ts`，兩邊要一致。
+- 重量換算（`weight.ts`，表 `clip_scales`）：衣夾只送 HX711 原始計數，換成公克用「空勾讀值」`tare_count`（什麼都沒掛時的讀值）和「每克讀值」`counts_per_gram`：`重量 g = (hx711_raw − tare_count) / counts_per_gram`（可以是負的係數，不能是 0）。跟電阻一樣每筆有 `since`。`/clips` 回 `scales`；`POST /clips/:id/scales`（`tare_count`、`counts_per_gram`、`since`，只限實體衣夾）、`DELETE /clips/:id/scales/:scaleId`。CSV 多一欄 `hx711_g`（一位小數，沒設定時留空）。前端公式在 `web/src/utils/weight.ts`，兩邊要一致；示範衣夾用 `demoScales()`（每克 393.2）。
+- **兩個公式的說明、推導和衣夾-01 的校正數值（2026-11-25：空勾 105836、每克 393.2）在 `docs/SENSOR-FORMULAS.md`**，改公式時一起更新。
 - 衣物庫：`GET/POST /garments`（可帶 `is_demo`；列表有 `dry_count`、`session_count`、`busy`）、`PATCH /garments/:id`、`DELETE /garments/:id`（只要還有任何晾衣，含晾衣中，就回 409，要先刪除紀錄或移到其他衣物）。
 - 晾衣：`GET /sessions/active`、`POST /sessions`（`garment_id` 或新的 `garment` 擇一）、`PATCH /sessions/:id/garment`、`POST /sessions/:id/end`（`dry`／`early`／`cancel`，cancel 會刪掉）、`GET /sessions?start&end&limit`（已結束的紀錄和 `total`）。
 - 單筆紀錄：`GET /sessions/:id`（晾衣中或已結束）、`PATCH /sessions/:id`（只限已結束：`garment_id`、`started_at`、`ended_at`；衣物要同為真/示範，時間要開始早於結束、不晚於現在、最長 48 小時，`dry` 紀錄重算 `actual_min`，`predicted_min` 保留當時的值）、`DELETE /sessions/:id`（只限已結束；晾衣中用 end `cancel`）。
